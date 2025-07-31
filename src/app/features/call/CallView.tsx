@@ -1,4 +1,3 @@
-/* eslint-disable no-nested-ternary */
 import { Room } from 'matrix-js-sdk';
 import React, { useContext, useMemo, useCallback, useEffect, useRef } from 'react';
 import { Box } from 'folds';
@@ -8,16 +7,7 @@ import {
   BackupRefContext,
 } from '../../pages/client/call/PersistentCallContainer';
 import { ScreenSize, useScreenSizeContext } from '../../hooks/useScreenSize';
-
-function debounce<F extends (...args: any[]) => any>(func: F, waitFor: number) {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
-  return (...args: Parameters<F>): void => {
-    if (timeoutId) {
-      clearTimeout(timeoutId);
-    }
-    timeoutId = setTimeout(() => func(...args), waitFor);
-  };
-}
+import { useDebounce } from '../../hooks/useDebounce';
 
 type OriginalStyles = {
   position?: string;
@@ -45,7 +35,7 @@ export function CallView({ room }: { room: Room }) {
   );
 
   const screenSize = useScreenSizeContext();
-  const isMobile = screenSize === ScreenSize.Mobile;
+  /* eslint-disable-next-line no-nested-ternary */
   const activeIframeDisplayRef = isPrimaryIframe
     ? isViewingActiveCall
       ? primaryIframeRef
@@ -90,11 +80,10 @@ export function CallView({ room }: { room: Room }) {
     }
   }, [activeIframeDisplayRef, room]);
 
-  const debouncedApplyFixedPositioning = useCallback(debounce(applyFixedPositioningToIframe, 50), [
-    applyFixedPositioningToIframe,
-    primaryIframeRef,
-    backupIframeRef,
-  ]);
+  const debouncedApplyFixedPositioning = useDebounce(applyFixedPositioningToIframe, {
+    wait: 50,
+    immediate: false,
+  });
   useEffect(() => {
     const iframeElement = activeIframeDisplayRef?.current;
     const hostElement = iframeHostRef?.current;
@@ -103,7 +92,7 @@ export function CallView({ room }: { room: Room }) {
       applyFixedPositioningToIframe();
 
       const resizeObserver = new ResizeObserver(debouncedApplyFixedPositioning);
-      resizeObserver.observe(hostElement);
+      if (hostElement) resizeObserver.observe(hostElement);
       window.addEventListener('scroll', debouncedApplyFixedPositioning, true);
 
       return () => {
@@ -121,6 +110,8 @@ export function CallView({ room }: { room: Room }) {
         originalIframeStylesRef.current = null;
       };
     }
+
+    return undefined;
   }, [
     activeIframeDisplayRef,
     applyFixedPositioningToIframe,
@@ -130,16 +121,10 @@ export function CallView({ room }: { room: Room }) {
     room,
   ]);
 
-  const isCallViewVisible = room.isCallRoom();
+  const isCallViewVisible = room.isCallRoom() && (screenSize === ScreenSize.Desktop || !isChatOpen);
 
   return (
-    <Box
-      direction="Column"
-      style={{
-        width: isChatOpen ? (isMobile ? '50%' : '100%') : '100%',
-        display: isCallViewVisible ? (isMobile && isChatOpen ? 'none' : 'flex') : 'none',
-      }}
-    >
+    <Box grow="Yes" direction="Column" style={{ display: isCallViewVisible ? 'flex' : 'none' }}>
       <div
         ref={iframeHostRef}
         style={{
@@ -147,7 +132,7 @@ export function CallView({ room }: { room: Room }) {
           height: '100%',
           position: 'relative',
           pointerEvents: 'none',
-          display: isCallViewVisible ? 'flex' : 'none',
+          display: 'flex',
         }}
       />
     </Box>
