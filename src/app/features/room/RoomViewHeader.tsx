@@ -24,7 +24,6 @@ import {
 } from 'folds';
 import { useNavigate } from 'react-router-dom';
 import { JoinRule, Room } from 'matrix-js-sdk';
-import { useAtomValue } from 'jotai';
 
 import { useStateEvent } from '../../hooks/useStateEvent';
 import { PageHeader } from '../../components/page';
@@ -33,7 +32,7 @@ import { UseStateProvider } from '../../components/UseStateProvider';
 import { RoomTopicViewer } from '../../components/room-topic-viewer';
 import { StateEvent } from '../../../types/matrix/room';
 import { useMatrixClient } from '../../hooks/useMatrixClient';
-import { useRoom } from '../../hooks/useRoom';
+import { useIsDirectRoom, useRoom } from '../../hooks/useRoom';
 import { useSetSetting, useSetting } from '../../state/hooks/settings';
 import { settingsAtom } from '../../state/settings';
 import { useSpaceOptionally } from '../../hooks/useSpace';
@@ -49,7 +48,6 @@ import { openInviteUser } from '../../../client/action/navigation';
 import { copyToClipboard } from '../../utils/dom';
 import { LeaveRoomPrompt } from '../../components/leave-room-prompt';
 import { useRoomAvatar, useRoomName, useRoomTopic } from '../../hooks/useRoomMeta';
-import { mDirectAtom } from '../../state/mDirectList';
 import { ScreenSize, useScreenSizeContext } from '../../hooks/useScreenSize';
 import { stopPropagation } from '../../utils/keyboard';
 import { getMatrixToRoom } from '../../plugins/matrix-to';
@@ -219,13 +217,13 @@ export function RoomViewHeader() {
   const space = useSpaceOptionally();
   const [menuAnchor, setMenuAnchor] = useState<RectCords>();
   const [pinMenuAnchor, setPinMenuAnchor] = useState<RectCords>();
-  const mDirects = useAtomValue(mDirectAtom);
+  const direct = useIsDirectRoom();
 
   const { isChatOpen, toggleChat } = useCallState();
   const pinnedEvents = useRoomPinnedEvents(room);
   const encryptionEvent = useStateEvent(room, StateEvent.RoomEncryption);
   const ecryptedRoom = !!encryptionEvent;
-  const avatarMxc = useRoomAvatar(room, mDirects.has(room.roomId));
+  const avatarMxc = useRoomAvatar(room, direct);
   const name = useRoomName(room);
   const topic = useRoomTopic(room);
   const avatarUrl = avatarMxc
@@ -233,24 +231,6 @@ export function RoomViewHeader() {
     : undefined;
 
   const setPeopleDrawer = useSetSetting(settingsAtom, 'isPeopleDrawer');
-
-  // I assume there is a global state so I don't have to run this check every time but for now we'll stub this in
-  const isDirectMessage = () => {
-    const mDirectsEvent = mx.getAccountData('m.direct');
-    if (mDirectsEvent?.event?.content === undefined) {
-      return false;
-    }
-    const { roomId } = room;
-    return (
-      Object.values(mDirectsEvent?.event?.content).filter((e) => {
-        if (e.indexOf(roomId) === 0) return true;
-      }).length !== 0
-    );
-  };
-
-  const handleCall: MouseEventHandler<HTMLButtonElement> = (evt) => {
-    setMenuAnchor(evt.currentTarget.getBoundingClientRect());
-  };
 
   const handleSearchClick = () => {
     const searchParams: _SearchPathSearchParams = {
@@ -346,25 +326,6 @@ export function RoomViewHeader() {
         </Box>
 
         <Box shrink="No">
-          {false && isDirectMessage() && (
-            <TooltipProvider
-              position="Bottom"
-              align="End"
-              offset={4}
-              tooltip={
-                <Tooltip>
-                  <Text>Start a Call</Text>
-                </Tooltip>
-              }
-            >
-              {(triggerRef) => (
-                <IconButton onClick={handleCall} ref={triggerRef}>
-                  <Icon size="400" src={Icons.Phone} />
-                </IconButton>
-              )}
-            </TooltipProvider>
-          )}
-
           {!ecryptedRoom && (!room.isCallRoom() || isChatOpen) && (
             <TooltipProvider
               position="Bottom"
@@ -461,7 +422,7 @@ export function RoomViewHeader() {
             </TooltipProvider>
           )}
 
-          {room.isCallRoom() && !isDirectMessage() && (
+          {room.isCallRoom() && !direct && (
             <TooltipProvider
               position="Bottom"
               offset={4}
