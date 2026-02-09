@@ -1,6 +1,6 @@
 import { Room } from 'matrix-js-sdk';
 import React, { useContext, useMemo, useCallback, useEffect, useRef, MouseEventHandler, useState, ReactNode } from 'react';
-import { Box, Button, Spinner, Text } from 'folds';
+import { Box, Button, config, Spinner, Text } from 'folds';
 import { useCallState } from '../../pages/client/call/CallProvider';
 import { useCallMembers } from '../../hooks/useCallMemberships';
 
@@ -198,13 +198,12 @@ export function CallView({ room }: { room: Room }) {
         </CallViewUserGrid>
 
         <Box direction="Column" alignItems="Center" style={{
-          paddingTop: "20px",
-          paddingBottom: "10px"
+          paddingBlock: config.space.S200
         }}>
           <Text size="H1" style={{
-            paddingBottom: "5px"
+            paddingBottom: config.space.S300
           }}>{room.name}</Text>
-          <Text>{visibleCallNames !== "" ? visibleCallNames : "No one"} {memberDisplayNames.length > 1 ? "are" : "is"} currently in voice</Text>
+          <Text size="T200">{visibleCallNames !== "" ? visibleCallNames : "No one"} {memberDisplayNames.length > 1 ? "are" : "is"} currently in voice</Text>
         </Box>
         <Button variant='Secondary' disabled={isActiveCallRoom} onClick={handleJoinVCClick}>
           {isActiveCallRoom ? (
