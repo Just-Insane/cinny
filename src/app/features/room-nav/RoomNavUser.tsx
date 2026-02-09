@@ -18,8 +18,8 @@ type RoomNavUserProps = {
 export function RoomNavUser({ room, callMembership }: RoomNavUserProps) {
   const mx = useMatrixClient();
   const useAuthentication = useMediaAuthentication();
-  const { isCallActive, activeCallRoomId } = useCallState();
-  const isActiveCall = isCallActive && activeCallRoomId === room.roomId;
+  const { isActiveCallReady, activeCallRoomId } = useCallState();
+  const isActiveCall = isActiveCallReady && activeCallRoomId === room.roomId;
   const userId = callMembership.sender ?? '';
   const avatarMxcUrl = getMemberAvatarMxc(room, userId);
   const avatarUrl = avatarMxcUrl

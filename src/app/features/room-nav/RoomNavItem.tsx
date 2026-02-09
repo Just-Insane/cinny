@@ -227,7 +227,7 @@ export function RoomNavItem({
   const [menuAnchor, setMenuAnchor] = useState<RectCords>();
   const unread = useRoomUnread(room.roomId, roomToUnreadAtom);
   const {
-    isCallActive,
+    isActiveCallReady,
     activeCallRoomId,
     setActiveCallRoomId,
     setViewedCallRoomId,
@@ -238,7 +238,7 @@ export function RoomNavItem({
   const typingMember = useRoomTypingMember(room.roomId).filter(
     (receipt) => receipt.userId !== mx.getUserId()
   );
-  const isActiveCall = isCallActive && activeCallRoomId === room.roomId;
+  const isActiveCall = isActiveCallReady && activeCallRoomId === room.roomId;
   const callMemberships = useCallMembers(mx, room.roomId);
   const { navigateRoom } = useRoomNavigate();
   const { roomIdOrAlias: viewedRoomId } = useParams();
@@ -269,7 +269,7 @@ export function RoomNavItem({
     }
     if (room.isCallRoom()) {
       if (!isMobile) {
-        if (activeCallRoomId !== room.roomId) {
+        if (!isActiveCall) {
           if (mx.getRoom(viewedRoomId)?.isCallRoom()) {
             navigateRoom(room.roomId);
           }

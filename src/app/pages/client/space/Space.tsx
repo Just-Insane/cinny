@@ -300,7 +300,7 @@ export function Space() {
   const selectedRoomId = useSelectedRoom();
   const lobbySelected = useSpaceLobbySelected(spaceIdOrAlias);
   const searchSelected = useSpaceSearchSelected(spaceIdOrAlias);
-  const { isCallActive, activeCallRoomId } = useCallState();
+  const { isActiveCallReady, activeCallRoomId } = useCallState();
 
   const [closedCategories, setClosedCategories] = useAtom(useClosedNavCategoriesAtom());
 
@@ -325,10 +325,10 @@ export function Space() {
         const showRoomAnyway =
           roomToUnread.has(roomId) ||
           roomId === selectedRoomId ||
-          (isCallActive && activeCallRoomId === roomId);
+          (isActiveCallReady && activeCallRoomId === roomId);
         return !showRoomAnyway;
       },
-      [space.roomId, closedCategories, roomToUnread, selectedRoomId, activeCallRoomId, isCallActive]
+      [space.roomId, closedCategories, roomToUnread, selectedRoomId, activeCallRoomId, isActiveCallReady]
     ),
     useCallback(
       (sId) => closedCategories.has(makeNavCategoryId(space.roomId, sId)),

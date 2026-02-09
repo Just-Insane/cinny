@@ -1,4 +1,4 @@
-import React, { createContext, ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
+import React, { createContext, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { logger } from 'matrix-js-sdk/lib/logger';
 import { ClientWidgetApi } from 'matrix-widget-api';
 import { Box } from 'folds';
@@ -13,42 +13,38 @@ import {
 import { useMatrixClient } from '../../../hooks/useMatrixClient';
 import { useClientConfig } from '../../../hooks/useClientConfig';
 import { ScreenSize, useScreenSizeContext } from '../../../hooks/useScreenSize';
+import { ThemeKind, useTheme } from '../../../hooks/useTheme';
 
 interface PersistentCallContainerProps {
   children: ReactNode;
 }
 
 export const PrimaryRefContext = createContext(null);
-export const BackupRefContext = createContext(null);
 
 export function PersistentCallContainer({ children }: PersistentCallContainerProps) {
   const primaryIframeRef = useRef<HTMLIFrameElement | null>(null);
   const primaryWidgetApiRef = useRef<ClientWidgetApi | null>(null);
   const primarySmallWidgetRef = useRef<SmallWidget | null>(null);
 
-  const backupIframeRef = useRef<HTMLIFrameElement | null>(null);
-  const backupWidgetApiRef = useRef<ClientWidgetApi | null>(null);
-  const backupSmallWidgetRef = useRef<SmallWidget | null>(null);
   const {
     activeCallRoomId,
     viewedCallRoomId,
     isChatOpen,
-    isCallActive,
-    isPrimaryIframe,
+    isActiveCallReady,
     registerActiveClientWidgetApi,
     activeClientWidget,
-    registerViewedClientWidgetApi,
-    viewedClientWidget,
   } = useCallState();
   const mx = useMatrixClient();
   const clientConfig = useClientConfig();
   const screenSize = useScreenSizeContext();
+  const theme = useTheme()
   const isMobile = screenSize === ScreenSize.Mobile;
   const { roomIdOrAlias: viewedRoomId } = useParams();
   const isViewingActiveCall = useMemo(
     () => activeCallRoomId !== null && activeCallRoomId === viewedRoomId,
     [activeCallRoomId, viewedRoomId]
   );
+
   /* eslint-disable no-param-reassign */
 
   const setupWidget = useCallback(
@@ -56,13 +52,16 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
       widgetApiRef: { current: ClientWidgetApi },
       smallWidgetRef: { current: SmallWidget },
       iframeRef: { current: { src: string } },
-      skipLobby: { toString: () => any }
+      skipLobby: { toString: () => any },
+      themeKind: ThemeKind | null
     ) => {
       if (mx?.getUserId()) {
+          logger.debug(`CallContextJ: iframe src - ${iframeRef.current.src}`)
+          logger.debug(`CallContextJ: activeCallRoomId: ${activeCallRoomId} viewedId: ${viewedCallRoomId} isactive: ${isActiveCallReady}`)
         if (
-          (activeCallRoomId !== viewedCallRoomId && isCallActive) ||
-          (activeCallRoomId && !isCallActive) ||
-          (!activeCallRoomId && viewedCallRoomId && !isCallActive)
+          (activeCallRoomId !== viewedCallRoomId && isActiveCallReady) ||
+          (activeCallRoomId && !isActiveCallReady) ||
+          (!activeCallRoomId && viewedCallRoomId && !isActiveCallReady)
         ) {
           const roomIdToSet = (skipLobby ? activeCallRoomId : viewedCallRoomId) ?? '';
           if (roomIdToSet === '') {
@@ -78,27 +77,18 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
               skipLobby: skipLobby.toString(),
               returnToLobby: 'true',
               perParticipantE2EE: 'true',
+              theme: themeKind
             }
           );
 
           if (
-            (primarySmallWidgetRef.current?.roomId || backupSmallWidgetRef.current?.roomId) &&
-            (skipLobby
-              ? activeClientWidget?.roomId &&
-                //activeCallRoomId === activeClientWidget.roomId &&
-                (activeClientWidget.roomId === primarySmallWidgetRef.current?.roomId ||
-                  activeClientWidget.roomId === backupSmallWidgetRef.current?.roomId)
-              : viewedClientWidget?.roomId &&
-                viewedCallRoomId === viewedClientWidget.roomId &&
-                (viewedClientWidget.roomId === primarySmallWidgetRef.current?.roomId ||
-                  viewedClientWidget.roomId === backupSmallWidgetRef.current?.roomId))
+            primarySmallWidgetRef.current?.roomId &&
+            (activeClientWidget?.roomId && activeClientWidget.roomId === primarySmallWidgetRef.current?.roomId)
           ) {
             return;
           }
 
-          if (iframeRef.current && iframeRef.current.src !== newUrl.toString()) {
-            iframeRef.current.src = newUrl.toString();
-          } else if (iframeRef.current && !iframeRef.current.src) {
+          if (iframeRef.current && (!iframeRef.current.src || iframeRef.current.src !== newUrl.toString())) {
             iframeRef.current.src = newUrl.toString();
           }
 
@@ -125,12 +115,8 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
 
           const widgetApiInstance = smallWidget.startMessaging(iframeElement);
           widgetApiRef.current = widgetApiInstance;
-          if (skipLobby) {
-            registerActiveClientWidgetApi(activeCallRoomId, widgetApiRef.current, smallWidget);
-          } else {
-            registerViewedClientWidgetApi(viewedCallRoomId, widgetApiRef.current, smallWidget);
-          }
-
+          registerActiveClientWidgetApi(roomIdToSet, widgetApiRef.current, smallWidget);
+          
           widgetApiInstance.once('ready', () => {
             logger.info(`PersistentCallContainer: Widget for ${roomIdToSet} is ready.`);
           });
@@ -141,43 +127,37 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
       mx,
       activeCallRoomId,
       viewedCallRoomId,
-      isCallActive,
+      isActiveCallReady,
       clientConfig.elementCallUrl,
-      viewedClientWidget,
       activeClientWidget,
-      viewedRoomId,
       registerActiveClientWidgetApi,
-      registerViewedClientWidgetApi,
     ]
   );
 
   useEffect(() => {
-    if ((activeCallRoomId && !viewedCallRoomId) || (activeCallRoomId && viewedCallRoomId))
-      setupWidget(primaryWidgetApiRef, primarySmallWidgetRef, primaryIframeRef, isPrimaryIframe);
-    if ((!activeCallRoomId && viewedCallRoomId) || (viewedCallRoomId && activeCallRoomId))
-      setupWidget(backupWidgetApiRef, backupSmallWidgetRef, backupIframeRef, !isPrimaryIframe);
+    logger.debug(`CallContextJ: ${isActiveCallReady} ${isViewingActiveCall}`)
+  }, [isActiveCallReady, isViewingActiveCall])
+  useEffect(() => {
+    if (activeCallRoomId){
+      setupWidget(primaryWidgetApiRef, primarySmallWidgetRef, primaryIframeRef, true, theme.kind);
+      logger.debug(`CallContextJ: set primary widget: ${primaryWidgetApiRef.current?.eventNames()} ${primarySmallWidgetRef.current} ${primaryIframeRef.current?.baseURI}`)
+    }
   }, [
+    theme,
     setupWidget,
     primaryWidgetApiRef,
     primarySmallWidgetRef,
     primaryIframeRef,
-    backupWidgetApiRef,
-    backupSmallWidgetRef,
-    backupIframeRef,
     registerActiveClientWidgetApi,
-    registerViewedClientWidgetApi,
     activeCallRoomId,
     viewedCallRoomId,
-    isCallActive,
-    isPrimaryIframe,
+    isActiveCallReady
   ]);
 
   const memoizedIframeRef = useMemo(() => primaryIframeRef, [primaryIframeRef]);
-  const memoizedBackupIframeRef = useMemo(() => backupIframeRef, [backupIframeRef]);
 
   return (
     <PrimaryRefContext.Provider value={memoizedIframeRef}>
-      <BackupRefContext.Provider value={memoizedBackupIframeRef}>
         <Box grow="No">
           <Box
             direction="Column"
@@ -201,26 +181,10 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
                   position: 'absolute',
                   top: 0,
                   left: 0,
-                  display: isPrimaryIframe || isViewingActiveCall ? 'flex' : 'none',
+                  display: 'flex',
                   width: '100%',
                   height: '100%',
                   border: 'none',
-                }}
-                title="Persistent Element Call"
-                sandbox="allow-forms allow-scripts allow-same-origin allow-popups allow-modals allow-downloads"
-                allow="microphone; camera; display-capture; autoplay; clipboard-write;"
-                src="about:blank"
-              />
-              <iframe
-                ref={backupIframeRef}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  width: '100%',
-                  height: '100%',
-                  border: 'none',
-                  display: !isPrimaryIframe || isViewingActiveCall ? 'flex' : 'none',
                 }}
                 title="Persistent Element Call"
                 sandbox="allow-forms allow-scripts allow-same-origin allow-popups allow-modals allow-downloads"
@@ -231,7 +195,6 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
           </Box>
         </Box>
         {children}
-      </BackupRefContext.Provider>
     </PrimaryRefContext.Provider>
   );
 }

@@ -52,11 +52,12 @@ export const getWidgetUrl = (
     embed: 'true',
     widgetId,
     appPrompt: 'false',
-    preload: 'false',
-    skipLobby: setParams.skipLobby ?? 'true',
+    skipLobby: setParams.skipLobby ?? 'true', // TODO: skipLobby is deprecated, use intent instead (intent doesn't produce the same effect?)
     returnToLobby: setParams.returnToLobby ?? 'true',
     perParticipantE2EE: setParams.perParticipantE2EE ?? 'true',
-    hideHeader: 'true',
+    header: 'none',
+    confineToRoom: 'true',
+    theme: setParams.theme ?? 'dark',
     userId: mx.getUserId()!,
     deviceId: mx.getDeviceId()!,
     roomId,
@@ -137,6 +138,7 @@ export class SmallWidget extends EventEmitter {
     // Populate the map of "read up to" events for this widget with the current event in every room.
     // This is a bit inefficient, but should be okay. We do this for all rooms in case the widget
     // requests timeline capabilities in other rooms down the road. It's just easier to manage here.
+    // eslint-disable-next-line no-restricted-syntax
     for (const room of this.client.getRooms()) {
       // Timelines are most recent last
       const events = room.getLiveTimeline()?.getEvents() || [];

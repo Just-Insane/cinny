@@ -9,7 +9,7 @@ export function CallNavStatus() {
     activeCallRoomId,
     isAudioEnabled,
     isVideoEnabled,
-    isCallActive,
+    isActiveCallReady,
     toggleAudio,
     toggleVideo,
     hangUp,
@@ -21,7 +21,7 @@ export function CallNavStatus() {
       navigateRoom(activeCallRoomId);
     }
   };
-  if (!isCallActive) {
+  if (!isActiveCallReady) {
     return null;
   }
 

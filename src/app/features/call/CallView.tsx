@@ -1,13 +1,21 @@
 import { Room } from 'matrix-js-sdk';
-import React, { useContext, useMemo, useCallback, useEffect, useRef } from 'react';
-import { Box } from 'folds';
+import React, { useContext, useMemo, useCallback, useEffect, useRef, MouseEventHandler, useState, ReactNode } from 'react';
+import { Box, Button, Spinner, Text } from 'folds';
 import { useCallState } from '../../pages/client/call/CallProvider';
+import { useCallMembers } from '../../hooks/useCallMemberships';
+
 import {
   PrimaryRefContext,
-  BackupRefContext,
 } from '../../pages/client/call/PersistentCallContainer';
 import { ScreenSize, useScreenSizeContext } from '../../hooks/useScreenSize';
 import { useDebounce } from '../../hooks/useDebounce';
+import { useMatrixClient } from '../../hooks/useMatrixClient';
+import { CallViewUser } from './CallViewUser';
+import { useRoomNavigate } from '../../hooks/useRoomNavigate';
+import { getMemberDisplayName } from '../../utils/room';
+import { getMxIdLocalPart } from '../../utils/matrix';
+import * as css from "./CallView.css"
+
 
 type OriginalStyles = {
   position?: string;
@@ -22,27 +30,49 @@ type OriginalStyles = {
   border?: string;
 };
 
+export function CallViewUserGrid({ children }: { children: ReactNode }) {
+  return (
+    <Box className={css.CallViewUserGrid} style={{
+      maxWidth: React.Children.count(children) === 4 ? "336px" : "503px"
+    }}>
+      {children}
+    </Box>
+  );
+}
+
+
 export function CallView({ room }: { room: Room }) {
   const primaryIframeRef = useContext(PrimaryRefContext);
-  const backupIframeRef = useContext(BackupRefContext);
   const iframeHostRef = useRef<HTMLDivElement>(null);
 
   const originalIframeStylesRef = useRef<OriginalStyles | null>(null);
-  const { activeCallRoomId, isPrimaryIframe, isChatOpen } = useCallState();
-  const isViewingActiveCall = useMemo(
-    () => activeCallRoomId !== null && activeCallRoomId === room.roomId,
-    [activeCallRoomId, room.roomId]
-  );
+  const mx = useMatrixClient();
+  
+  const [visibleCallNames, setVisibleCallNames] = useState("")
 
+  const { 
+    isActiveCallReady, 
+    activeCallRoomId, 
+    isChatOpen, 
+    setActiveCallRoomId, 
+    hangUp, 
+    setViewedCallRoomId 
+  } = useCallState();
+
+  const isActiveCallRoom = activeCallRoomId === room.roomId
+  const shouldDisplayCall = isActiveCallRoom && isActiveCallReady;
+  const callMembers = useCallMembers(mx, room.roomId)
+
+  const getName = (userId: string) => getMemberDisplayName(room, userId) ?? getMxIdLocalPart(userId);
+  
+  const memberDisplayNames = callMembers.map(callMembership => getName(callMembership.sender ?? ''))
+
+  const { navigateRoom } = useRoomNavigate();
   const screenSize = useScreenSizeContext();
+  const isMobile = screenSize === ScreenSize.Mobile;
+
   /* eslint-disable-next-line no-nested-ternary */
-  const activeIframeDisplayRef = isPrimaryIframe
-    ? isViewingActiveCall
-      ? primaryIframeRef
-      : backupIframeRef
-    : isViewingActiveCall
-    ? backupIframeRef
-    : primaryIframeRef;
+  const activeIframeDisplayRef = primaryIframeRef
 
   const applyFixedPositioningToIframe = useCallback(() => {
     const iframeElement = activeIframeDisplayRef?.current;
@@ -88,7 +118,7 @@ export function CallView({ room }: { room: Room }) {
     const iframeElement = activeIframeDisplayRef?.current;
     const hostElement = iframeHostRef?.current;
 
-    if (room.isCallRoom() || (isViewingActiveCall && iframeElement && hostElement)) {
+    if (room.isCallRoom() || (shouldDisplayCall && iframeElement && hostElement)) {
       applyFixedPositioningToIframe();
 
       const resizeObserver = new ResizeObserver(debouncedApplyFixedPositioning);
@@ -116,12 +146,35 @@ export function CallView({ room }: { room: Room }) {
     activeIframeDisplayRef,
     applyFixedPositioningToIframe,
     debouncedApplyFixedPositioning,
-    isPrimaryIframe,
-    isViewingActiveCall,
+    shouldDisplayCall,
     room,
   ]);
 
+
+  const handleJoinVCClick: MouseEventHandler<HTMLElement> = (evt) => {
+      if (isMobile) {
+        evt.stopPropagation();
+        setViewedCallRoomId(room.roomId);
+        navigateRoom(room.roomId);
+      }
+      if (!shouldDisplayCall) {
+        hangUp(room.roomId);
+        setActiveCallRoomId(room.roomId);
+      } 
+  };
+
   const isCallViewVisible = room.isCallRoom() && (screenSize === ScreenSize.Desktop || !isChatOpen);
+
+  useEffect(() => {
+    if(memberDisplayNames.length <= 2){
+      setVisibleCallNames(memberDisplayNames.join(" and "))
+    } else {
+      const visible = memberDisplayNames.slice(0, 2);
+      const remaining = memberDisplayNames.length - 2;
+
+      setVisibleCallNames(`${visible.join(", ")}, and ${remaining} other${remaining > 1 ? "s" : ""}`)
+    }
+  }, [memberDisplayNames])
 
   return (
     <Box grow="Yes" direction="Column" style={{ display: isCallViewVisible ? 'flex' : 'none' }}>
@@ -132,9 +185,38 @@ export function CallView({ room }: { room: Room }) {
           height: '100%',
           position: 'relative',
           pointerEvents: 'none',
-          display: 'flex',
+          display: shouldDisplayCall ? 'flex' : 'none',
         }}
       />
+      <Box grow='Yes' justifyContent='Center' alignItems='Center' direction="Column" gap="300" style={{
+        display: shouldDisplayCall ? 'none' : 'flex',
+      }}>
+        <CallViewUserGrid>
+          {callMembers.map(callMember => (
+            <CallViewUser room={room} callMembership={callMember}/>
+          )).slice(0, 6)}
+        </CallViewUserGrid>
+
+        <Box direction="Column" alignItems="Center" style={{
+          paddingTop: "20px",
+          paddingBottom: "10px"
+        }}>
+          <Text size="H1" style={{
+            paddingBottom: "5px"
+          }}>{room.name}</Text>
+          <Text>{visibleCallNames !== "" ? visibleCallNames : "No one"} {memberDisplayNames.length > 1 ? "are" : "is"} currently in voice</Text>
+        </Box>
+        <Button variant='Secondary' disabled={isActiveCallRoom} onClick={handleJoinVCClick}>
+          {isActiveCallRoom ? (
+            <Box justifyContent='Center' alignItems='Center' gap='200'>
+              <Spinner />
+              <Text size="B500">{activeCallRoomId === room.roomId ? `Joining` : "Join Voice"}</Text>
+            </Box>
+          ) : (
+            <Text size="B500">Join Voice</Text>
+          )}
+        </Button>
+      </Box>
     </Box>
   );
 }
