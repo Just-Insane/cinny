@@ -77,6 +77,7 @@ export interface IApp extends IWidget {
   roomId: string;
   eventId?: string;
   avatar_url?: string;
+  sender: string;
   'io.element.managed_hybrid'?: boolean;
 }
 
@@ -91,7 +92,7 @@ export class SmallWidget extends EventEmitter {
 
   public url?: string;
 
-  public iframe: HTMLElement | null;
+  public iframe: HTMLIFrameElement | null = null;
 
   private type: string; // Type of the widget (e.g., 'm.call')
 
@@ -143,8 +144,11 @@ export class SmallWidget extends EventEmitter {
       // Timelines are most recent last
       const events = room.getLiveTimeline()?.getEvents() || [];
       const roomEvent = events[events.length - 1];
-      if (!roomEvent) continue; // force later code to think the room is fresh
-      this.readUpToMap[room.roomId] = roomEvent.getId()!;
+      // force later code to think the room is fresh
+      if (roomEvent) {
+        const eventId = roomEvent.getId();
+        if(eventId) this.readUpToMap[room.roomId] = eventId;
+      } 
     }
 
     this.messaging.on('action:org.matrix.msc2876.read_events', (ev: CustomEvent) => {
@@ -163,28 +167,16 @@ export class SmallWidget extends EventEmitter {
 
       const stateEvents = state.events?.get(type);
 
-      for (const [key, eventObject] of stateEvents?.entries() ?? []) {
-        events.push(eventObject.event);
-      }
+      Array.from(stateEvents?.values() ?? []).forEach(eventObject => {
+        events.push(eventObject.event)
+      })
 
       return this.messaging?.transport.reply(ev.detail, { events });
     });
 
-    /*
-    this.messaging?.on('action:content_loaded', () => {
-      this.messaging?.transport?.send('io.element.join', {
-        audioInput: 'true',
-        videoInput: 'true',
-      });
-    });
-    */
-
     this.client.on(ClientEvent.Event, this.onEvent);
     this.client.on(MatrixEventEvent.Decrypted, this.onEventDecrypted);
-    //this.client.on(RoomStateEvent.Events, this.onStateUpdate);
     this.client.on(ClientEvent.ToDeviceEvent, this.onToDeviceEvent);
-    //this.client.on(RoomStateEvent.Events, this.onReadEvent);
-    // this.messaging.setViewedRoomId(this.roomId ?? null);
     this.messaging.on(
       `action:${WidgetApiFromWidgetAction.UpdateAlwaysOnScreen}`,
       async (ev: CustomEvent<IStickyActionRequest>) => {
@@ -196,7 +188,7 @@ export class SmallWidget extends EventEmitter {
             this.messaging.transport.reply(ev.detail, {});
           }
           // Stop being persistent can be done instantly
-          //MAKE PERSISTENT HERE
+          // MAKE PERSISTENT HERE
           // Send the ack after the widget actually has become sticky.
         }
       }
@@ -272,21 +264,28 @@ export class SmallWidget extends EventEmitter {
     const timeline = room.getLiveTimeline();
     const events = this.arrayFastClone(timeline.getEvents()).reverse().slice(0, 100);
 
-    for (const timelineEvent of events) {
-      if (timelineEvent.getId() === upToEventId) {
+    let advanced = false;
+
+    events.some(timelineEvent => {
+      const id = timelineEvent.getId();
+
+      if (id === upToEventId) {
         // The event must be somewhere before the "read up to" marker
-        return false;
-      }
-      if (timelineEvent.getId() === ev.getId()) {
-        // The event is after the marker; advance it
-        this.readUpToMap[roomId] = evId;
         return true;
       }
-    }
 
-    // We can't say for sure whether the widget has seen the event; let's
-    // just assume that it has
-    return false;
+      if (id === evId) {
+        // The event is after the marker; advance it
+        this.readUpToMap[roomId] = evId;
+        advanced = true;
+        return true;
+      }
+      // We can't say for sure whether the widget has seen the event; let's
+      // just assume that it has
+      return false;
+    });
+
+    return advanced;
   }
 
   private feedEvent(ev: MatrixEvent): void {
@@ -401,12 +400,4 @@ export const createVirtualWidget = (
   roomId,
   // Add other required fields from IWidget if necessary
   sender: creatorUserId, // Example: Assuming sender is the creator
-  content: {
-    // Example content structure
-    type,
-    url: url.toString(),
-    name,
-    data,
-    creatorUserId,
-  },
 });

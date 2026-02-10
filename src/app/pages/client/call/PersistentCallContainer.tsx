@@ -1,8 +1,7 @@
-import React, { createContext, ReactNode, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { createContext, ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
 import { logger } from 'matrix-js-sdk/lib/logger';
 import { ClientWidgetApi } from 'matrix-widget-api';
 import { Box } from 'folds';
-import { useParams } from 'react-router-dom';
 import { useCallState } from './CallProvider';
 import {
   createVirtualWidget,
@@ -19,7 +18,7 @@ interface PersistentCallContainerProps {
   children: ReactNode;
 }
 
-export const CallRefContext = createContext(null);
+export const CallRefContext = createContext<React.MutableRefObject<HTMLIFrameElement | null> | null>(null);
 
 export function PersistentCallContainer({ children }: PersistentCallContainerProps) {
   const callIframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -44,10 +43,10 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
 
   const setupWidget = useCallback(
     (
-      widgetApiRef: { current: ClientWidgetApi },
-      smallWidgetRef: { current: SmallWidget },
-      iframeRef: { current: { src: string } },
-      skipLobby: { toString: () => any },
+      widgetApiRef: React.MutableRefObject<ClientWidgetApi | null>,
+      smallWidgetRef: React.MutableRefObject<SmallWidget | null>,
+      iframeRef: React.MutableRefObject<HTMLIFrameElement | null>,
+      skipLobby: boolean,
       themeKind: ThemeKind | null
     ) => {
       if (mx?.getUserId()) {
@@ -112,7 +111,7 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
 
           const widgetApiInstance = smallWidget.startMessaging(iframeElement);
           widgetApiRef.current = widgetApiInstance;
-          registerActiveClientWidgetApi(roomIdToSet, widgetApiRef.current, smallWidget);
+          registerActiveClientWidgetApi(roomIdToSet, widgetApiRef.current, smallWidget, iframeElement);
           
           widgetApiInstance.once('ready', () => {
             logger.info(`PersistentCallContainer: Widget for ${roomIdToSet} is ready.`);

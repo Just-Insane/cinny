@@ -60,7 +60,7 @@ export function CallNavStatus() {
               >
                 <Icon src={Icons.VolumeHigh}/>
                 <Text style={{ flexGrow: 1 }} size="B400" truncate>
-                  {mx.getRoom(activeCallRoomId)?.name}
+                  {activeCallRoomId ? mx.getRoom(activeCallRoomId)?.name : ""}
                 </Text>
               </Chip>
             )}

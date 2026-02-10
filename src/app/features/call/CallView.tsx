@@ -1,5 +1,5 @@
 import { Room } from 'matrix-js-sdk';
-import React, { useContext, useMemo, useCallback, useEffect, useRef, MouseEventHandler, useState, ReactNode } from 'react';
+import React, { useContext, useCallback, useEffect, useRef, MouseEventHandler, useState, ReactNode } from 'react';
 import { Box, Button, config, Spinner, Text } from 'folds';
 import { useCallState } from '../../pages/client/call/CallProvider';
 import { useCallMembers } from '../../hooks/useCallMemberships';
@@ -157,7 +157,7 @@ export function CallView({ room }: { room: Room }) {
         navigateRoom(room.roomId);
       }
       if (!callIsCurrentAndReady) {
-        hangUp(room.roomId);
+        hangUp();
         setActiveCallRoomId(room.roomId);
       } 
   };

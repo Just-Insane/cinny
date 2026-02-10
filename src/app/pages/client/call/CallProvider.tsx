@@ -8,7 +8,7 @@ import React, {
   useEffect,
 } from 'react';
 import { logger } from 'matrix-js-sdk/lib/logger';
-import { WidgetApiToWidgetAction, WidgetApiAction, ClientWidgetApi } from 'matrix-widget-api';
+import { WidgetApiToWidgetAction, WidgetApiAction, ClientWidgetApi, IWidgetApiRequestData } from 'matrix-widget-api';
 import { useParams } from 'react-router-dom';
 import { SmallWidget } from '../../../features/call/SmallWidget';
 
@@ -30,15 +30,16 @@ interface CallContextState {
   setActiveCallRoomId: (roomId: string | null) => void;
   viewedCallRoomId: string | null;
   setViewedCallRoomId: (roomId: string | null) => void;
-  hangUp: (room: string) => void;
+  hangUp: () => void;
   activeClientWidgetApi: ClientWidgetApi | null;
   activeClientWidget: SmallWidget | null;
   registerActiveClientWidgetApi: (
     roomId: string | null,
     clientWidgetApi: ClientWidgetApi | null,
-    clientWidget: SmallWidget
+    clientWidget: SmallWidget,
+    activeClientIframeRef: HTMLIFrameElement
   ) => void;
-  sendWidgetAction: <T = unknown>(
+  sendWidgetAction: <T extends IWidgetApiRequestData = IWidgetApiRequestData>(
     action: WidgetApiToWidgetAction | string,
     data: T
   ) => Promise<void>;
@@ -60,7 +61,6 @@ interface CallProviderProps {
 const DEFAULT_AUDIO_ENABLED = true;
 const DEFAULT_VIDEO_ENABLED = false;
 const DEFAULT_CHAT_OPENED = false;
-const DEFAULT_CALL_ACTIVE = false;
 
 export function CallProvider({ children }: CallProviderProps) {
   const [activeCallRoomId, setActiveCallRoomIdState] = useState<string | null>(null);
@@ -69,11 +69,12 @@ export function CallProvider({ children }: CallProviderProps) {
   const [activeClientWidgetApi, setActiveClientWidgetApiState] = useState<ClientWidgetApi | null>(null);
   const [activeClientWidget, setActiveClientWidget] = useState<SmallWidget | null>(null);
   const [activeClientWidgetApiRoomId, setActiveClientWidgetApiRoomId] = useState<string | null>(null);
+  const [activeClientWidgetIframeRef, setActiveClientWidgetIframeRef] = useState<HTMLIFrameElement | null>(null)
 
   const [isAudioEnabled, setIsAudioEnabledState] = useState<boolean>(DEFAULT_AUDIO_ENABLED);
   const [isVideoEnabled, setIsVideoEnabledState] = useState<boolean>(DEFAULT_VIDEO_ENABLED);
   const [isChatOpen, setIsChatOpenState] = useState<boolean>(DEFAULT_CHAT_OPENED);
-  const [isActiveCallReady, setIsActiveCallReady] = useState<boolean>(DEFAULT_CALL_ACTIVE);
+  const [isActiveCallReady, setIsActiveCallReady] = useState<boolean>(false);
 
   const { roomIdOrAlias: viewedRoomId } = useParams<{ roomIdOrAlias: string }>();
 
@@ -97,11 +98,13 @@ export function CallProvider({ children }: CallProviderProps) {
     (
       clientWidgetApi: ClientWidgetApi | null,
       clientWidget: SmallWidget | null,
-      roomId: string | null
+      roomId: string | null,
+      clientWidgetIframeRef: HTMLIFrameElement | null
     ) => {
       setActiveClientWidgetApiState(clientWidgetApi);
       setActiveClientWidget(clientWidget);
       setActiveClientWidgetApiRoomId(roomId);
+      setActiveClientWidgetIframeRef(clientWidgetIframeRef)
     },
     []
   );
@@ -110,17 +113,19 @@ export function CallProvider({ children }: CallProviderProps) {
     (
       roomId: string | null,
       clientWidgetApi: ClientWidgetApi | null,
-      clientWidget: SmallWidget | null
+      clientWidget: SmallWidget | null,
+      clientWidgetIframeRef: HTMLIFrameElement | null
     ) => {
       if (activeClientWidgetApi && activeClientWidgetApi !== clientWidgetApi) {
         logger.debug(`CallContext: Cleaning up listeners for previous clientWidgetApi instance.`);
       }
 
+      
       if (roomId && clientWidgetApi) {
         logger.debug(`CallContext: Registering active clientWidgetApi for room ${roomId}.`);
-        setActiveClientWidgetApi(clientWidgetApi, clientWidget, roomId);
+        setActiveClientWidgetApi(clientWidgetApi, clientWidget, roomId, clientWidgetIframeRef);
       } else if (roomId === activeClientWidgetApiRoomId || roomId === null) {
-        setActiveClientWidgetApi(null, null, null);
+        setActiveClientWidgetApi(null, null, null, null);
       }
     },
     [activeClientWidgetApi, activeClientWidgetApiRoomId, setActiveClientWidgetApi]
@@ -128,7 +133,7 @@ export function CallProvider({ children }: CallProviderProps) {
 
   const hangUp = useCallback(
     () => {
-      setActiveClientWidgetApi(null, null, null);
+      setActiveClientWidgetApi(null, null, null, null);
       setActiveCallRoomIdState(null);
       activeClientWidgetApi?.transport.send(`${WIDGET_HANGUP_ACTION}`, {});
       setIsActiveCallReady(false);
@@ -143,7 +148,7 @@ export function CallProvider({ children }: CallProviderProps) {
 
 
   const sendWidgetAction = useCallback(
-    async <T = unknown,>(action: WidgetApiToWidgetAction | string, data: T): Promise<void> => {
+    async <T extends IWidgetApiRequestData = IWidgetApiRequestData,>(action: WidgetApiToWidgetAction | string, data: T): Promise<void> => {
       if (!activeClientWidgetApi) {
         logger.warn(
           `CallContext: Cannot send action '${action}', no active API clientWidgetApi registered.`
@@ -163,6 +168,8 @@ export function CallProvider({ children }: CallProviderProps) {
         data
       );
       await activeClientWidgetApi.transport.send(action as WidgetApiAction, data);
+
+      return Promise.resolve()
     },
     [activeClientWidgetApi, activeCallRoomId, activeClientWidgetApiRoomId]
   );
@@ -211,15 +218,14 @@ export function CallProvider({ children }: CallProviderProps) {
       return;
     }
 
-    const api = activeClientWidgetApi;
-    if (!api) {
+    if (!activeClientWidgetApi) {
       return;
     }
 
     const handleHangup = (ev: CustomEvent) => {
       ev.preventDefault();
-      if (isActiveCallReady && ev.detail.widgetId === activeClientWidgetApi?.widget.id) {
-        activeClientWidgetApi?.transport.reply(ev.detail, {});
+      if (isActiveCallReady && ev.detail.widgetId === activeClientWidgetApi.widget.id) {
+        activeClientWidgetApi.transport.reply(ev.detail, {});
       }
       logger.debug(
         `CallContext: Received hangup action from widget in room ${activeCallRoomId}.`,
@@ -251,33 +257,39 @@ export function CallProvider({ children }: CallProviderProps) {
 
     const handleOnScreenStateUpdate = (ev: CustomEvent) => {
       ev.preventDefault();
-      api.transport.reply(ev.detail, {});
+      activeClientWidgetApi.transport.reply(ev.detail, {});
     };
 
     const handleOnTileLayout = (ev: CustomEvent) => {
       ev.preventDefault();
 
-      api.transport.reply(ev.detail, {});
+      activeClientWidgetApi.transport.reply(ev.detail, {});
     };
 
     const handleJoin = (ev: CustomEvent) => {
       ev.preventDefault();
 
-      api.transport.reply(ev.detail, {});
+      activeClientWidgetApi.transport.reply(ev.detail, {});
+
       const iframeDoc =
-      api.iframe?.contentDocument ||
-      api.iframe?.contentWindow.document;
-      const observer = new MutationObserver(() => {
-        const button = iframeDoc.querySelector('[data-testid="incall_leave"]');
-        if (button) {
-          button.addEventListener('click', () => {
-            hangUp()
-          });
-        }
-        observer.disconnect();
-      });
-      logger.debug('Join Call');
-      observer.observe(iframeDoc, { childList: true, subtree: true });
+        activeClientWidgetIframeRef?.contentWindow?.document || 
+        activeClientWidgetIframeRef?.contentDocument;
+
+      if(iframeDoc){
+
+        const observer = new MutationObserver(() => {
+          const button = iframeDoc.querySelector('[data-testid="incall_leave"]');
+          if (button) {
+            button.addEventListener('click', () => {
+              hangUp()
+            });
+          }
+          observer.disconnect();
+        });
+        logger.debug('Join Call');
+        observer.observe(iframeDoc, { childList: true, subtree: true });
+      }
+      
       setIsActiveCallReady(true);
       
     };
@@ -291,13 +303,14 @@ export function CallProvider({ children }: CallProviderProps) {
       video_enabled: isVideoEnabled,
     });
 
-    api.on(`action:${WIDGET_HANGUP_ACTION}`, handleHangup);
-    api.on(`action:${WIDGET_MEDIA_STATE_UPDATE_ACTION}`, handleMediaStateUpdate);
-    api.on(`action:${WIDGET_TILE_UPDATE}`, handleOnTileLayout);
-    api.on(`action:${WIDGET_ON_SCREEN_ACTION}`, handleOnScreenStateUpdate);
-    api.on(`action:${WIDGET_JOIN_ACTION}`, handleJoin);
+    activeClientWidgetApi.on(`action:${WIDGET_HANGUP_ACTION}`, handleHangup);
+    activeClientWidgetApi.on(`action:${WIDGET_MEDIA_STATE_UPDATE_ACTION}`, handleMediaStateUpdate);
+    activeClientWidgetApi.on(`action:${WIDGET_TILE_UPDATE}`, handleOnTileLayout);
+    activeClientWidgetApi.on(`action:${WIDGET_ON_SCREEN_ACTION}`, handleOnScreenStateUpdate);
+    activeClientWidgetApi.on(`action:${WIDGET_JOIN_ACTION}`, handleJoin);
 
   }, [
+    activeClientWidgetIframeRef,
     activeClientWidgetApi,
     activeCallRoomId,
     activeClientWidgetApiRoomId,
