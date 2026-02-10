@@ -5,7 +5,7 @@ import { useCallState } from '../../pages/client/call/CallProvider';
 import { useCallMembers } from '../../hooks/useCallMemberships';
 
 import {
-  PrimaryRefContext,
+  CallRefContext,
 } from '../../pages/client/call/PersistentCallContainer';
 import { ScreenSize, useScreenSizeContext } from '../../hooks/useScreenSize';
 import { useDebounce } from '../../hooks/useDebounce';
@@ -42,7 +42,7 @@ export function CallViewUserGrid({ children }: { children: ReactNode }) {
 
 
 export function CallView({ room }: { room: Room }) {
-  const primaryIframeRef = useContext(PrimaryRefContext);
+  const callIframeRef = useContext(CallRefContext);
   const iframeHostRef = useRef<HTMLDivElement>(null);
 
   const originalIframeStylesRef = useRef<OriginalStyles | null>(null);
@@ -60,7 +60,7 @@ export function CallView({ room }: { room: Room }) {
   } = useCallState();
 
   const isActiveCallRoom = activeCallRoomId === room.roomId
-  const shouldDisplayCall = isActiveCallRoom && isActiveCallReady;
+  const callIsCurrentAndReady = isActiveCallRoom && isActiveCallReady;
   const callMembers = useCallMembers(mx, room.roomId)
 
   const getName = (userId: string) => getMemberDisplayName(room, userId) ?? getMxIdLocalPart(userId);
@@ -71,8 +71,7 @@ export function CallView({ room }: { room: Room }) {
   const screenSize = useScreenSizeContext();
   const isMobile = screenSize === ScreenSize.Mobile;
 
-  /* eslint-disable-next-line no-nested-ternary */
-  const activeIframeDisplayRef = primaryIframeRef
+  const activeIframeDisplayRef = callIframeRef
 
   const applyFixedPositioningToIframe = useCallback(() => {
     const iframeElement = activeIframeDisplayRef?.current;
@@ -118,7 +117,7 @@ export function CallView({ room }: { room: Room }) {
     const iframeElement = activeIframeDisplayRef?.current;
     const hostElement = iframeHostRef?.current;
 
-    if (room.isCallRoom() || (shouldDisplayCall && iframeElement && hostElement)) {
+    if (room.isCallRoom() || (callIsCurrentAndReady && iframeElement && hostElement)) {
       applyFixedPositioningToIframe();
 
       const resizeObserver = new ResizeObserver(debouncedApplyFixedPositioning);
@@ -146,7 +145,7 @@ export function CallView({ room }: { room: Room }) {
     activeIframeDisplayRef,
     applyFixedPositioningToIframe,
     debouncedApplyFixedPositioning,
-    shouldDisplayCall,
+    callIsCurrentAndReady,
     room,
   ]);
 
@@ -157,7 +156,7 @@ export function CallView({ room }: { room: Room }) {
         setViewedCallRoomId(room.roomId);
         navigateRoom(room.roomId);
       }
-      if (!shouldDisplayCall) {
+      if (!callIsCurrentAndReady) {
         hangUp(room.roomId);
         setActiveCallRoomId(room.roomId);
       } 
@@ -185,11 +184,11 @@ export function CallView({ room }: { room: Room }) {
           height: '100%',
           position: 'relative',
           pointerEvents: 'none',
-          display: shouldDisplayCall ? 'flex' : 'none',
+          display: callIsCurrentAndReady ? 'flex' : 'none',
         }}
       />
       <Box grow='Yes' justifyContent='Center' alignItems='Center' direction="Column" gap="300" style={{
-        display: shouldDisplayCall ? 'none' : 'flex',
+        display: callIsCurrentAndReady ? 'none' : 'flex',
       }}>
         <CallViewUserGrid>
           {callMembers.map(callMember => (

@@ -8,8 +8,8 @@ export function CallNavStatus() {
   const {
     activeCallRoomId,
     isAudioEnabled,
-    isVideoEnabled,
-    isActiveCallReady,
+    isVideoEnabled, 
+    isActiveCallReady,   
     toggleAudio,
     toggleVideo,
     hangUp,
@@ -21,9 +21,6 @@ export function CallNavStatus() {
       navigateRoom(activeCallRoomId);
     }
   };
-  if (!isActiveCallReady) {
-    return null;
-  }
 
   return (
     <Box
@@ -34,56 +31,10 @@ export function CallNavStatus() {
         justifyContent: 'center',
       }}
     >
-      <Box direction="Row" style={{ justifyContent: 'center' }}>
+      <Box direction="Row" justifyContent='SpaceBetween' alignItems='Center'>
         {/* Going to need better icons for this */}
-        <TooltipProvider
-          position="Top"
-          offset={4}
-          tooltip={
-            <Tooltip>
-              <Text>{!isAudioEnabled ? 'Unmute' : 'Mute'}</Text>
-            </Tooltip>
-          }
-        >
-          {(triggerRef) => (
-            <IconButton variant="Background" ref={triggerRef} onClick={toggleAudio}>
-              <Icon src={!isAudioEnabled ? Icons.MicMute : Icons.Mic} />
-            </IconButton>
-          )}
-        </TooltipProvider>
-        <TooltipProvider
-          position="Top"
-          offset={4}
-          tooltip={
-            <Tooltip>
-              <Text>{!isVideoEnabled ? 'Video On' : 'Video Off'}</Text>
-            </Tooltip>
-          }
-        >
-          {(triggerRef) => (
-            <IconButton variant="Background" ref={triggerRef} onClick={toggleVideo}>
-              <Icon src={!isVideoEnabled ? Icons.VideoCameraMute : Icons.VideoCamera} />
-            </IconButton>
-          )}
-        </TooltipProvider>
 
-        <TooltipProvider
-          position="Top"
-          offset={4}
-          tooltip={
-            <Tooltip>
-              <Text>Hang Up</Text>
-            </Tooltip>
-          }
-        >
-          {(triggerRef) => (
-            <IconButton variant="Background" ref={triggerRef} onClick={hangUp}>
-              <Icon src={Icons.Phone} />
-            </IconButton>
-          )}
-        </TooltipProvider>
-
-        <Box grow="Yes" justifyContent="Center" alignItems="Center">
+        <Box>
           <TooltipProvider
             position="Top"
             offset={4}
@@ -101,11 +52,73 @@ export function CallNavStatus() {
                 as="button"
                 onClick={handleGoToCallRoom}
                 ref={triggerRef}
+                style={{
+                  display: isActiveCallReady ? 'flex' : 'none',
+                  alignItems: "center",
+                  justifyContent: "center"
+                }}
               >
+                <Icon src={Icons.VolumeHigh}/>
                 <Text style={{ flexGrow: 1 }} size="B400" truncate>
                   {mx.getRoom(activeCallRoomId)?.name}
                 </Text>
               </Chip>
+            )}
+          </TooltipProvider>
+        </Box>
+
+        <Box>
+          <TooltipProvider
+            position="Top"
+            offset={4}
+            tooltip={
+              <Tooltip>
+                <Text>{!isAudioEnabled ? 'Unmute' : 'Mute'}</Text>
+              </Tooltip>
+            }
+          >
+            {(triggerRef) => (
+              <IconButton variant="Background" ref={triggerRef} onClick={toggleAudio}>
+                <Icon src={!isAudioEnabled ? Icons.MicMute : Icons.Mic} />
+              </IconButton>
+            )}
+          </TooltipProvider>
+          <TooltipProvider
+            position="Top"
+            offset={4}
+            tooltip={
+              <Tooltip>
+                <Text>{!isVideoEnabled ? 'Video On' : 'Video Off'}</Text>
+              </Tooltip>
+            }
+          >
+            {(triggerRef) => (
+              <IconButton variant="Background" ref={triggerRef} onClick={toggleVideo}>
+                <Icon src={!isVideoEnabled ? Icons.VideoCameraMute : Icons.VideoCamera} />
+              </IconButton>
+            )}
+          </TooltipProvider>
+
+          <TooltipProvider
+            position="Top"
+            offset={4}
+            tooltip={
+              <Tooltip>
+                <Text>Hang Up</Text>
+              </Tooltip>
+            }
+          >
+            {(triggerRef) => (
+              <IconButton 
+                variant="Background" 
+                ref={triggerRef} 
+                onClick={hangUp}
+                style={{
+                  display: isActiveCallReady ? 'block' : 'none'
+                }}
+                >
+                <Icon src={Icons.Phone} />
+              </IconButton>
             )}
           </TooltipProvider>
         </Box>

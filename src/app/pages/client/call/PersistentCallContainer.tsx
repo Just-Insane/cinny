@@ -19,12 +19,12 @@ interface PersistentCallContainerProps {
   children: ReactNode;
 }
 
-export const PrimaryRefContext = createContext(null);
+export const CallRefContext = createContext(null);
 
 export function PersistentCallContainer({ children }: PersistentCallContainerProps) {
-  const primaryIframeRef = useRef<HTMLIFrameElement | null>(null);
-  const primaryWidgetApiRef = useRef<ClientWidgetApi | null>(null);
-  const primarySmallWidgetRef = useRef<SmallWidget | null>(null);
+  const callIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const callWidgetApiRef = useRef<ClientWidgetApi | null>(null);
+  const callSmallWidgetRef = useRef<SmallWidget | null>(null);
 
   const {
     activeCallRoomId,
@@ -39,11 +39,6 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
   const screenSize = useScreenSizeContext();
   const theme = useTheme()
   const isMobile = screenSize === ScreenSize.Mobile;
-  const { roomIdOrAlias: viewedRoomId } = useParams();
-  const isViewingActiveCall = useMemo(
-    () => activeCallRoomId !== null && activeCallRoomId === viewedRoomId,
-    [activeCallRoomId, viewedRoomId]
-  );
 
   /* eslint-disable no-param-reassign */
 
@@ -56,17 +51,19 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
       themeKind: ThemeKind | null
     ) => {
       if (mx?.getUserId()) {
-          logger.debug(`CallContextJ: iframe src - ${iframeRef.current.src}`)
-          logger.debug(`CallContextJ: activeCallRoomId: ${activeCallRoomId} viewedId: ${viewedCallRoomId} isactive: ${isActiveCallReady}`)
+        logger.debug(`PersistentCallContainer: (setupWidget) activeCallRoomId: ${activeCallRoomId} viewedId: ${viewedCallRoomId} isactive: ${isActiveCallReady}`)
         if (
           (activeCallRoomId !== viewedCallRoomId && isActiveCallReady) ||
           (activeCallRoomId && !isActiveCallReady) ||
           (!activeCallRoomId && viewedCallRoomId && !isActiveCallReady)
         ) {
+
           const roomIdToSet = (skipLobby ? activeCallRoomId : viewedCallRoomId) ?? '';
+
           if (roomIdToSet === '') {
             return;
           }
+
           const widgetId = `element-call-${roomIdToSet}-${Date.now()}`;
           const newUrl = getWidgetUrl(
             mx,
@@ -82,8 +79,8 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
           );
 
           if (
-            primarySmallWidgetRef.current?.roomId &&
-            (activeClientWidget?.roomId && activeClientWidget.roomId === primarySmallWidgetRef.current?.roomId)
+            callSmallWidgetRef.current?.roomId &&
+            (activeClientWidget?.roomId && activeClientWidget.roomId === callSmallWidgetRef.current?.roomId)
           ) {
             return;
           }
@@ -135,29 +132,26 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
   );
 
   useEffect(() => {
-    logger.debug(`CallContextJ: ${isActiveCallReady} ${isViewingActiveCall}`)
-  }, [isActiveCallReady, isViewingActiveCall])
-  useEffect(() => {
     if (activeCallRoomId){
-      setupWidget(primaryWidgetApiRef, primarySmallWidgetRef, primaryIframeRef, true, theme.kind);
-      logger.debug(`CallContextJ: set primary widget: ${primaryWidgetApiRef.current?.eventNames()} ${primarySmallWidgetRef.current} ${primaryIframeRef.current?.baseURI}`)
+      setupWidget(callWidgetApiRef, callSmallWidgetRef, callIframeRef, true, theme.kind);
+      logger.debug(`PersistentCallContainer: set call widget: ${callWidgetApiRef.current?.eventNames()} ${callSmallWidgetRef.current} ${callIframeRef.current?.baseURI}`)
     }
   }, [
     theme,
     setupWidget,
-    primaryWidgetApiRef,
-    primarySmallWidgetRef,
-    primaryIframeRef,
+    callWidgetApiRef,
+    callSmallWidgetRef,
+    callIframeRef,
     registerActiveClientWidgetApi,
     activeCallRoomId,
     viewedCallRoomId,
     isActiveCallReady
   ]);
 
-  const memoizedIframeRef = useMemo(() => primaryIframeRef, [primaryIframeRef]);
+  const memoizedIframeRef = useMemo(() => callIframeRef, [callIframeRef]);
 
   return (
-    <PrimaryRefContext.Provider value={memoizedIframeRef}>
+    <CallRefContext.Provider value={memoizedIframeRef}>
         <Box grow="No">
           <Box
             direction="Column"
@@ -176,7 +170,7 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
               }}
             >
               <iframe
-                ref={primaryIframeRef}
+                ref={callIframeRef}
                 style={{
                   position: 'absolute',
                   top: 0,
@@ -195,6 +189,6 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
           </Box>
         </Box>
         {children}
-    </PrimaryRefContext.Provider>
+    </CallRefContext.Provider>
   );
 }
