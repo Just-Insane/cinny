@@ -57,7 +57,7 @@ interface CallProviderProps {
   children: ReactNode;
 }
 
-const DEFAULT_AUDIO_ENABLED = false;
+const DEFAULT_AUDIO_ENABLED = true;
 const DEFAULT_VIDEO_ENABLED = false;
 const DEFAULT_CHAT_OPENED = false;
 const DEFAULT_CALL_ACTIVE = false;
