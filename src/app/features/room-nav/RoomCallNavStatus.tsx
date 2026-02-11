@@ -16,10 +16,10 @@ export function CallNavStatus() {
   } = useCallState();
   const mx = useMatrixClient();
   const { navigateRoom } = useRoomNavigate();
+  if (!isActiveCallReady || !activeCallRoomId) return null;
+
   const handleGoToCallRoom = () => {
-    if (activeCallRoomId) {
-      navigateRoom(activeCallRoomId);
-    }
+    navigateRoom(activeCallRoomId);
   };
 
   return (
