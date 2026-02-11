@@ -302,7 +302,7 @@ export function RoomViewHeader() {
           <BackRouteHandler>
             {(onBack) => (
               <Box shrink="No" alignItems="Center">
-                <IconButton onClick={onBack}>
+                <IconButton fill="None" onClick={onBack}>
                   <Icon src={Icons.ArrowLeft} />
                 </IconButton>
               </Box>
@@ -382,7 +382,7 @@ export function RoomViewHeader() {
               }
             >
               {(triggerRef) => (
-                <IconButton ref={triggerRef} onClick={handleSearchClick}>
+                <IconButton fill="None" ref={triggerRef} onClick={handleSearchClick}>
                   <Icon size="400" src={Icons.Search} />
                 </IconButton>
               )}
@@ -400,6 +400,7 @@ export function RoomViewHeader() {
             >
               {(triggerRef) => (
                 <IconButton
+                  fill="None"
                   style={{ position: 'relative' }}
                   onClick={handleOpenPinMenu}
                   ref={triggerRef}
@@ -460,7 +461,11 @@ export function RoomViewHeader() {
               }
             >
               {(triggerRef) => (
-                <IconButton ref={triggerRef} onClick={() => setPeopleDrawer((drawer) => !drawer)}>
+                <IconButton
+                  fill="None"
+                  ref={triggerRef}
+                  onClick={() => setPeopleDrawer((drawer) => !drawer)}
+                >
                   <Icon size="400" src={Icons.User} />
                 </IconButton>
               )}
@@ -478,7 +483,7 @@ export function RoomViewHeader() {
               }
             >
               {(triggerRef) => (
-                <IconButton ref={triggerRef} onClick={toggleChat}>
+                <IconButton fill="None" ref={triggerRef} onClick={toggleChat}>
                   <Icon size="400" src={Icons.Message} filled={isChatOpen} />
                 </IconButton>
               )}
@@ -496,7 +501,12 @@ export function RoomViewHeader() {
             }
           >
             {(triggerRef) => (
-              <IconButton onClick={handleOpenMenu} ref={triggerRef} aria-pressed={!!menuAnchor}>
+              <IconButton
+                fill="None"
+                onClick={handleOpenMenu}
+                ref={triggerRef}
+                aria-pressed={!!menuAnchor}
+              >
                 <Icon size="400" src={Icons.VerticalDots} filled={!!menuAnchor} />
               </IconButton>
             )}
