@@ -1,5 +1,4 @@
 import React, { createContext, ReactNode, useCallback, useEffect, useMemo, useRef } from 'react';
-import { logger } from 'matrix-js-sdk/lib/logger';
 import { ClientWidgetApi } from 'matrix-widget-api';
 import { Box } from 'folds';
 import { useCallState } from './CallProvider';
@@ -18,7 +17,8 @@ interface PersistentCallContainerProps {
   children: ReactNode;
 }
 
-export const CallRefContext = createContext<React.MutableRefObject<HTMLIFrameElement | null> | null>(null);
+export const CallRefContext =
+  createContext<React.MutableRefObject<HTMLIFrameElement | null> | null>(null);
 
 export function PersistentCallContainer({ children }: PersistentCallContainerProps) {
   const callIframeRef = useRef<HTMLIFrameElement | null>(null);
@@ -36,7 +36,7 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
   const mx = useMatrixClient();
   const clientConfig = useClientConfig();
   const screenSize = useScreenSizeContext();
-  const theme = useTheme()
+  const theme = useTheme();
   const isMobile = screenSize === ScreenSize.Mobile;
 
   /* eslint-disable no-param-reassign */
@@ -50,13 +50,11 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
       themeKind: ThemeKind | null
     ) => {
       if (mx?.getUserId()) {
-        logger.debug(`PersistentCallContainer: (setupWidget) activeCallRoomId: ${activeCallRoomId} viewedId: ${viewedCallRoomId} isactive: ${isActiveCallReady}`)
         if (
           (activeCallRoomId !== viewedCallRoomId && isActiveCallReady) ||
           (activeCallRoomId && !isActiveCallReady) ||
           (!activeCallRoomId && viewedCallRoomId && !isActiveCallReady)
         ) {
-
           const roomIdToSet = (skipLobby ? activeCallRoomId : viewedCallRoomId) ?? '';
 
           if (roomIdToSet === '') {
@@ -73,18 +71,22 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
               skipLobby: skipLobby.toString(),
               returnToLobby: 'true',
               perParticipantE2EE: 'true',
-              theme: themeKind
+              theme: themeKind,
             }
           );
 
           if (
             callSmallWidgetRef.current?.roomId &&
-            (activeClientWidget?.roomId && activeClientWidget.roomId === callSmallWidgetRef.current?.roomId)
+            activeClientWidget?.roomId &&
+            activeClientWidget.roomId === callSmallWidgetRef.current?.roomId
           ) {
             return;
           }
 
-          if (iframeRef.current && (!iframeRef.current.src || iframeRef.current.src !== newUrl.toString())) {
+          if (
+            iframeRef.current &&
+            (!iframeRef.current.src || iframeRef.current.src !== newUrl.toString())
+          ) {
             iframeRef.current.src = newUrl.toString();
           }
 
@@ -111,11 +113,12 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
 
           const widgetApiInstance = smallWidget.startMessaging(iframeElement);
           widgetApiRef.current = widgetApiInstance;
-          registerActiveClientWidgetApi(roomIdToSet, widgetApiRef.current, smallWidget, iframeElement);
-          
-          widgetApiInstance.once('ready', () => {
-            logger.info(`PersistentCallContainer: Widget for ${roomIdToSet} is ready.`);
-          });
+          registerActiveClientWidgetApi(
+            roomIdToSet,
+            widgetApiRef.current,
+            smallWidget,
+            iframeElement
+          );
         }
       }
     },
@@ -131,9 +134,8 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
   );
 
   useEffect(() => {
-    if (activeCallRoomId){
+    if (activeCallRoomId) {
       setupWidget(callWidgetApiRef, callSmallWidgetRef, callIframeRef, true, theme.kind);
-      logger.debug(`PersistentCallContainer: set call widget: ${callWidgetApiRef.current?.eventNames()} ${callSmallWidgetRef.current} ${callIframeRef.current?.baseURI}`)
     }
   }, [
     theme,
@@ -144,50 +146,50 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
     registerActiveClientWidgetApi,
     activeCallRoomId,
     viewedCallRoomId,
-    isActiveCallReady
+    isActiveCallReady,
   ]);
 
   const memoizedIframeRef = useMemo(() => callIframeRef, [callIframeRef]);
 
   return (
     <CallRefContext.Provider value={memoizedIframeRef}>
-        <Box grow="No">
+      <Box grow="No">
+        <Box
+          direction="Column"
+          style={{
+            position: 'relative',
+            zIndex: 0,
+            display: isMobile && isChatOpen ? 'none' : 'flex',
+            width: isMobile && isChatOpen ? '0%' : '100%',
+            height: isMobile && isChatOpen ? '0%' : '100%',
+          }}
+        >
           <Box
-            direction="Column"
+            grow="Yes"
             style={{
               position: 'relative',
-              zIndex: 0,
-              display: isMobile && isChatOpen ? 'none' : 'flex',
-              width: isMobile && isChatOpen ? '0%' : '100%',
-              height: isMobile && isChatOpen ? '0%' : '100%',
             }}
           >
-            <Box
-              grow="Yes"
+            <iframe
+              ref={callIframeRef}
               style={{
-                position: 'relative',
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                display: 'flex',
+                width: '100%',
+                height: '100%',
+                border: 'none',
               }}
-            >
-              <iframe
-                ref={callIframeRef}
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  display: 'flex',
-                  width: '100%',
-                  height: '100%',
-                  border: 'none',
-                }}
-                title="Persistent Element Call"
-                sandbox="allow-forms allow-scripts allow-same-origin allow-popups allow-modals allow-downloads"
-                allow="microphone; camera; display-capture; autoplay; clipboard-write;"
-                src="about:blank"
-              />
-            </Box>
+              title="Persistent Element Call"
+              sandbox="allow-forms allow-scripts allow-same-origin allow-popups allow-modals allow-downloads"
+              allow="microphone; camera; display-capture; autoplay; clipboard-write;"
+              src="about:blank"
+            />
           </Box>
         </Box>
-        {children}
+      </Box>
+      {children}
     </CallRefContext.Provider>
   );
 }

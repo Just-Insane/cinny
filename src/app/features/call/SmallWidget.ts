@@ -26,7 +26,6 @@ import {
   WidgetApiFromWidgetAction,
   WidgetKind,
 } from 'matrix-widget-api';
-import { logger } from 'matrix-js-sdk/lib/logger';
 import { CinnyWidget } from './CinnyWidget';
 import { SmallWidgetDriver } from './SmallWidgetDriver';
 
@@ -68,7 +67,6 @@ export const getWidgetUrl = (
   const replacedParams = params.toString().replace(/%24/g, '$');
   url.search = `?${replacedParams}`;
 
-  logger.info('Generated Element Call Widget URL:', url.toString());
   return url;
 };
 
@@ -194,7 +192,6 @@ export class SmallWidget extends EventEmitter {
       }
     );
 
-    logger.info(`Widget messaging started for widgetId: ${this.mockWidget.id}`);
     return this.messaging;
   }
 
@@ -319,9 +316,7 @@ export class SmallWidget extends EventEmitter {
         this.eventsToFeed.add(ev);
       } else {
         const raw = ev.getEffectiveEvent();
-        this.messaging.feedEvent(raw as IRoomEvent, this.roomId ?? '').catch((e) => {
-          logger.error('Error sending event to widget: ', e);
-        });
+        this.messaging.feedEvent(raw as IRoomEvent, this.roomId ?? '').catch(() => null);
       }
     }
   }
@@ -333,7 +328,6 @@ export class SmallWidget extends EventEmitter {
     if (this.messaging) {
       this.messaging.stop(); // Example if a stop method exists
       this.messaging.removeAllListeners(); // Remove listeners attached by SmallWidget
-      logger.info(`Widget messaging stopped for widgetId: ${this.mockWidget.id}`);
       this.messaging = null;
     }
   }
