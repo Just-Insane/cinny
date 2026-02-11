@@ -8,8 +8,8 @@ export function CallNavStatus() {
   const {
     activeCallRoomId,
     isAudioEnabled,
-    isVideoEnabled, 
-    isActiveCallReady,   
+    isVideoEnabled,
+    isActiveCallReady,
     toggleAudio,
     toggleVideo,
     hangUp,
@@ -31,7 +31,7 @@ export function CallNavStatus() {
         justifyContent: 'center',
       }}
     >
-      <Box direction="Row" justifyContent='SpaceBetween' alignItems='Center'>
+      <Box direction="Row" justifyContent="SpaceBetween" alignItems="Center">
         {/* Going to need better icons for this */}
 
         <Box>
@@ -54,13 +54,13 @@ export function CallNavStatus() {
                 ref={triggerRef}
                 style={{
                   display: isActiveCallReady ? 'flex' : 'none',
-                  alignItems: "center",
-                  justifyContent: "center"
+                  alignItems: 'center',
+                  justifyContent: 'center',
                 }}
               >
-                <Icon src={Icons.VolumeHigh}/>
+                <Icon src={Icons.VolumeHigh} />
                 <Text style={{ flexGrow: 1 }} size="B400" truncate>
-                  {activeCallRoomId ? mx.getRoom(activeCallRoomId)?.name : ""}
+                  {activeCallRoomId ? mx.getRoom(activeCallRoomId)?.name : ''}
                 </Text>
               </Chip>
             )}
@@ -109,14 +109,14 @@ export function CallNavStatus() {
             }
           >
             {(triggerRef) => (
-              <IconButton 
-                variant="Background" 
-                ref={triggerRef} 
+              <IconButton
+                variant="Background"
+                ref={triggerRef}
                 onClick={hangUp}
                 style={{
-                  display: isActiveCallReady ? 'block' : 'none'
+                  display: isActiveCallReady ? 'block' : 'none',
                 }}
-                >
+              >
                 <Icon src={Icons.Phone} />
               </IconButton>
             )}

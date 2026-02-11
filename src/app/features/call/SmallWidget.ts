@@ -145,8 +145,8 @@ export class SmallWidget extends EventEmitter {
       // force later code to think the room is fresh
       if (roomEvent) {
         const eventId = roomEvent.getId();
-        if(eventId) this.readUpToMap[room.roomId] = eventId;
-      } 
+        if (eventId) this.readUpToMap[room.roomId] = eventId;
+      }
     }
 
     this.messaging.on('action:org.matrix.msc2876.read_events', (ev: CustomEvent) => {
@@ -165,9 +165,9 @@ export class SmallWidget extends EventEmitter {
 
       const stateEvents = state.events?.get(type);
 
-      Array.from(stateEvents?.values() ?? []).forEach(eventObject => {
-        events.push(eventObject.event)
-      })
+      Array.from(stateEvents?.values() ?? []).forEach((eventObject) => {
+        events.push(eventObject.event);
+      });
 
       return this.messaging?.transport.reply(ev.detail, { events });
     });
@@ -263,7 +263,7 @@ export class SmallWidget extends EventEmitter {
 
     let advanced = false;
 
-    events.some(timelineEvent => {
+    events.some((timelineEvent) => {
       const id = timelineEvent.getId();
 
       if (id === upToEventId) {
