@@ -209,9 +209,13 @@ export function CallView({ room }: { room: Room }) {
         }}
       >
         <CallViewUserGrid>
-          {callMembers
-            .map((callMember) => <CallViewUser room={room} callMembership={callMember} />)
-            .slice(0, 6)}
+          {callMembers.slice(0, 6).map((callMember) => (
+            <CallViewUser
+              key={callMember.membershipID}
+              room={room}
+              callMembership={callMember}
+            />
+          ))}
         </CallViewUserGrid>
 
         <Box

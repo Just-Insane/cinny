@@ -40,9 +40,9 @@ export function RoomNavUser({ room, callMembership }: RoomNavUserProps) {
   return (
     <NavItem variant="Background" radii="400">
       <NavButton onClick={handleNavUserClick} aria-label={ariaLabel}>
-        <NavItemContent>
+        <NavItemContent as="div">
           <Box direction="Column" grow="Yes" gap="200" justifyContent="Stretch">
-            <Box as="span" alignItems="Center" gap="200">
+            <Box alignItems="Center" gap="200">
               <Avatar size="200">
                 <UserAvatar
                   userId={userId}
@@ -51,7 +51,7 @@ export function RoomNavUser({ room, callMembership }: RoomNavUserProps) {
                   renderFallback={() => <Icon size="50" src={Icons.User} filled />}
                 />
               </Avatar>
-              <Text size="B400" priority="300" truncate>
+              <Text as="span" size="B400" priority="300" truncate>
                 {getName}
               </Text>
             </Box>

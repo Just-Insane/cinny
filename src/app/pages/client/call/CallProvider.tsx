@@ -257,9 +257,11 @@ export function CallProvider({ children }: CallProviderProps) {
       setIsActiveCallReady(true);
     };
 
-    sendWidgetAction(WIDGET_MEDIA_STATE_UPDATE_ACTION, {
+    void sendWidgetAction(WIDGET_MEDIA_STATE_UPDATE_ACTION, {
       audio_enabled: isAudioEnabled,
       video_enabled: isVideoEnabled,
+    }).catch(() => {
+      // Widget transport may reject while call/session setup is still in progress.
     });
 
     activeClientWidgetApi.on(`action:${WIDGET_HANGUP_ACTION}`, handleHangup);
