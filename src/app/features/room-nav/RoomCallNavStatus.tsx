@@ -1,29 +1,13 @@
-import {
-  Box,
-  Chip,
-  Icon,
-  IconButton,
-  Icons,
-  Text,
-  Tooltip,
-  TooltipProvider,
-  color,
-  config,
-} from 'folds';
+import { Box, Chip, Icon, IconButton, Icons, Line, Text, Tooltip, TooltipProvider } from 'folds';
 import React from 'react';
 import { useMatrixClient } from '../../hooks/useMatrixClient';
 import { useCallState } from '../../pages/client/call/CallProvider';
 import { useRoomNavigate } from '../../hooks/useRoomNavigate';
+import * as css from './RoomCallNavStatus.css';
 
 export function CallNavStatus() {
-  const {
-    activeCallRoomId,
-    isAudioEnabled,
-    isVideoEnabled,
-    toggleAudio,
-    toggleVideo,
-    hangUp,
-  } = useCallState();
+  const { activeCallRoomId, isAudioEnabled, isVideoEnabled, toggleAudio, toggleVideo, hangUp } =
+    useCallState();
   const mx = useMatrixClient();
   const { navigateRoom } = useRoomNavigate();
   const hasActiveCall = Boolean(activeCallRoomId);
@@ -35,16 +19,10 @@ export function CallNavStatus() {
   };
 
   return (
-    <Box
-      direction="Column"
-      style={{
-        flexShrink: 0,
-        borderTop: `${config.borderWidth.B300} solid ${color.Background.ContainerLine}`,
-        padding: `${config.space.S200} ${config.space.S200}`,
-      }}
-    >
-      <Box direction="Row" alignItems="Center" gap="100">
-        <Box grow="Yes" style={{ minWidth: 0 }}>
+    <Box direction="Column" shrink="No">
+      <Line variant="Surface" size="300" />
+      <Box className={css.Actions} direction="Row" alignItems="Center" gap="100">
+        <Box className={css.RoomButtonWrap} grow="Yes">
           {hasActiveCall && (
             <TooltipProvider
               position="Top"
@@ -57,22 +35,16 @@ export function CallNavStatus() {
             >
               {(triggerRef) => (
                 <Chip
-                  variant="Background"
                   size="500"
                   fill="Soft"
                   as="button"
                   onClick={handleGoToCallRoom}
                   ref={triggerRef}
-                  style={{
-                    width: '100%',
-                    minWidth: 0,
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                  }}
+                  className={css.RoomButton}
                 >
-                  <Icon size="200" src={Icons.VolumeHigh} />
-                  <Text style={{ flexGrow: 1, minWidth: 0 }} size="B400" truncate>
-                    {mx.getRoom(activeCallRoomId)?.name ?? ''}
+                  <Icon size="300" src={Icons.VolumeHigh} />
+                  <Text className={css.RoomName} size="B400" truncate>
+                    {mx.getRoom(activeCallRoomId ?? '')?.name ?? ''}
                   </Text>
                 </Chip>
               )}
@@ -90,13 +62,7 @@ export function CallNavStatus() {
             }
           >
             {(triggerRef) => (
-              <IconButton
-                variant="Background"
-                size="400"
-                radii="400"
-                ref={triggerRef}
-                onClick={hangUp}
-              >
+              <IconButton fill="None" size="300" ref={triggerRef} onClick={hangUp}>
                 <Icon src={Icons.Phone} />
               </IconButton>
             )}
@@ -112,13 +78,7 @@ export function CallNavStatus() {
           }
         >
           {(triggerRef) => (
-            <IconButton
-              variant="Background"
-              size="400"
-              radii="400"
-              ref={triggerRef}
-              onClick={toggleAudio}
-            >
+            <IconButton fill="None" size="300" ref={triggerRef} onClick={toggleAudio}>
               <Icon src={!isAudioEnabled ? Icons.MicMute : Icons.Mic} />
             </IconButton>
           )}
@@ -133,13 +93,7 @@ export function CallNavStatus() {
           }
         >
           {(triggerRef) => (
-            <IconButton
-              variant="Background"
-              size="400"
-              radii="400"
-              ref={triggerRef}
-              onClick={toggleVideo}
-            >
+            <IconButton fill="None" size="300" ref={triggerRef} onClick={toggleVideo}>
               <Icon src={!isVideoEnabled ? Icons.VideoCameraMute : Icons.VideoCamera} />
             </IconButton>
           )}
