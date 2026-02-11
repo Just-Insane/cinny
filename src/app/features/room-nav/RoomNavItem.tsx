@@ -30,10 +30,9 @@ import { nameInitials } from '../../utils/common';
 import { useMatrixClient } from '../../hooks/useMatrixClient';
 import { useRoomUnread } from '../../state/hooks/unread';
 import { roomToUnreadAtom } from '../../state/room/roomToUnread';
-import { usePowerLevels, usePowerLevelsAPI } from '../../hooks/usePowerLevels';
+import { usePowerLevels } from '../../hooks/usePowerLevels';
 import { copyToClipboard } from '../../utils/dom';
-import { markAsRead } from '../../../client/action/notifications';
-import { openInviteUser } from '../../../client/action/navigation';
+import { markAsRead } from '../../utils/notifications';
 import { UseStateProvider } from '../../components/UseStateProvider';
 import { LeaveRoomPrompt } from '../../components/leave-room-prompt';
 import { useRoomTypingMember } from '../../hooks/useRoomTypingMembers';
@@ -52,6 +51,9 @@ import {
   RoomNotificationMode,
 } from '../../hooks/useRoomsNotificationPreferences';
 import { RoomNotificationModeSwitcher } from '../../components/RoomNotificationSwitcher';
+import { useRoomCreators } from '../../hooks/useRoomCreators';
+import { useRoomPermissions } from '../../hooks/useRoomPermissions';
+import { InviteUserPrompt } from '../../components/invite-user-prompt';
 import { useCallState } from '../../pages/client/call/CallProvider';
 import { useCallMembers } from '../../hooks/useCallMemberships';
 import { useRoomNavigate } from '../../hooks/useRoomNavigate';
@@ -69,10 +71,14 @@ const RoomNavItemMenu = forwardRef<HTMLDivElement, RoomNavItemMenuProps>(
     const [hideActivity] = useSetting(settingsAtom, 'hideActivity');
     const unread = useRoomUnread(room.roomId, roomToUnreadAtom);
     const powerLevels = usePowerLevels(room);
-    const { getPowerLevel, canDoAction } = usePowerLevelsAPI(powerLevels);
-    const canInvite = canDoAction('invite', getPowerLevel(mx.getUserId() ?? ''));
+    const creators = useRoomCreators(room);
+
+    const permissions = useRoomPermissions(creators, powerLevels);
+    const canInvite = permissions.action('invite', mx.getSafeUserId());
     const openRoomSettings = useOpenRoomSettings();
     const space = useSpaceOptionally();
+
+    const [invitePrompt, setInvitePrompt] = useState(false);
 
     const handleMarkAsRead = () => {
       markAsRead(mx, room.roomId, hideActivity);
@@ -80,8 +86,7 @@ const RoomNavItemMenu = forwardRef<HTMLDivElement, RoomNavItemMenuProps>(
     };
 
     const handleInvite = () => {
-      openInviteUser(room.roomId);
-      requestClose();
+      setInvitePrompt(true);
     };
 
     const handleCopyLink = () => {
@@ -98,6 +103,15 @@ const RoomNavItemMenu = forwardRef<HTMLDivElement, RoomNavItemMenuProps>(
 
     return (
       <Menu ref={ref} style={{ maxWidth: toRem(160), width: '100vw' }}>
+        {invitePrompt && room && (
+          <InviteUserPrompt
+            room={room}
+            requestClose={() => {
+              setInvitePrompt(false);
+              requestClose();
+            }}
+          />
+        )}
         <Box direction="Column" gap="100" style={{ padding: config.space.S100 }}>
           <MenuItem
             onClick={handleMarkAsRead}
@@ -141,6 +155,7 @@ const RoomNavItemMenu = forwardRef<HTMLDivElement, RoomNavItemMenuProps>(
             size="300"
             after={<Icon size="100" src={Icons.UserPlus} />}
             radii="300"
+            aria-pressed={invitePrompt}
             disabled={!canInvite}
           >
             <Text style={{ flexGrow: 1 }} as="span" size="T300" truncate>
@@ -273,7 +288,7 @@ export function RoomNavItem({
           if (mx.getRoom(viewedRoomId)?.isCallRoom()) {
             navigateRoom(room.roomId);
           }
-          hangUp(room.roomId);
+          hangUp();
           setActiveCallRoomId(room.roomId);
         } else {
           navigateRoom(room.roomId);

@@ -1,5 +1,5 @@
 import { RoomMember } from 'matrix-js-sdk';
-import { useMemo } from 'react';
+import { useCallback, useMemo } from 'react';
 
 export const MemberSort = {
   Ascending: (a: RoomMember, b: RoomMember) =>
@@ -45,4 +45,24 @@ export const useMemberSortMenu = (): MemberSortItem[] =>
 export const useMemberSort = (index: number, memberSort: MemberSortItem[]): MemberSortItem => {
   const item = memberSort[index] ?? memberSort[0];
   return item;
+};
+
+export const useMemberPowerSort = (
+  creators: Set<string>,
+  getPowerLevel: (userId: string) => number
+): MemberSortFn => {
+  const sort: MemberSortFn = useCallback(
+    (a, b) => {
+      if (creators.has(a.userId) && creators.has(b.userId)) {
+        return 0;
+      }
+      if (creators.has(a.userId)) return -1;
+      if (creators.has(b.userId)) return 1;
+
+      return getPowerLevel(b.userId) - getPowerLevel(a.userId);
+    },
+    [creators]
+  );
+
+  return sort;
 };

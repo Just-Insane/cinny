@@ -26,8 +26,7 @@ import { useMatrixClient } from '../../hooks/useMatrixClient';
 import { RoomAvatar } from '../../components/room-avatar';
 import { nameInitials } from '../../utils/common';
 import * as css from './LobbyHeader.css';
-import { openInviteUser } from '../../../client/action/navigation';
-import { IPowerLevels, usePowerLevelsAPI } from '../../hooks/usePowerLevels';
+import { IPowerLevels } from '../../hooks/usePowerLevels';
 import { UseStateProvider } from '../../components/UseStateProvider';
 import { LeaveSpacePrompt } from '../../components/leave-space-prompt';
 import { stopPropagation } from '../../utils/keyboard';
@@ -36,31 +35,46 @@ import { BackRouteHandler } from '../../components/BackRouteHandler';
 import { mxcUrlToHttp } from '../../utils/matrix';
 import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
 import { useOpenSpaceSettings } from '../../state/hooks/spaceSettings';
+import { useRoomCreators } from '../../hooks/useRoomCreators';
+import { useRoomPermissions } from '../../hooks/useRoomPermissions';
+import { InviteUserPrompt } from '../../components/invite-user-prompt';
 
 type LobbyMenuProps = {
-  roomId: string;
   powerLevels: IPowerLevels;
   requestClose: () => void;
 };
 const LobbyMenu = forwardRef<HTMLDivElement, LobbyMenuProps>(
-  ({ roomId, powerLevels, requestClose }, ref) => {
+  ({ powerLevels, requestClose }, ref) => {
     const mx = useMatrixClient();
-    const { getPowerLevel, canDoAction } = usePowerLevelsAPI(powerLevels);
-    const canInvite = canDoAction('invite', getPowerLevel(mx.getUserId() ?? ''));
+    const space = useSpace();
+    const creators = useRoomCreators(space);
+
+    const permissions = useRoomPermissions(creators, powerLevels);
+    const canInvite = permissions.action('invite', mx.getSafeUserId());
     const openSpaceSettings = useOpenSpaceSettings();
 
+    const [invitePrompt, setInvitePrompt] = useState(false);
+
     const handleInvite = () => {
-      openInviteUser(roomId);
-      requestClose();
+      setInvitePrompt(true);
     };
 
     const handleRoomSettings = () => {
-      openSpaceSettings(roomId);
+      openSpaceSettings(space.roomId);
       requestClose();
     };
 
     return (
       <Menu ref={ref} style={{ maxWidth: toRem(160), width: '100vw' }}>
+        {invitePrompt && (
+          <InviteUserPrompt
+            room={space}
+            requestClose={() => {
+              setInvitePrompt(false);
+              requestClose();
+            }}
+          />
+        )}
         <Box direction="Column" gap="100" style={{ padding: config.space.S100 }}>
           <MenuItem
             onClick={handleInvite}
@@ -69,6 +83,7 @@ const LobbyMenu = forwardRef<HTMLDivElement, LobbyMenuProps>(
             size="300"
             after={<Icon size="100" src={Icons.UserPlus} />}
             radii="300"
+            aria-pressed={invitePrompt}
             disabled={!canInvite}
           >
             <Text style={{ flexGrow: 1 }} as="span" size="T300" truncate>
@@ -106,7 +121,7 @@ const LobbyMenu = forwardRef<HTMLDivElement, LobbyMenuProps>(
                 </MenuItem>
                 {promptLeave && (
                   <LeaveSpacePrompt
-                    roomId={roomId}
+                    roomId={space.roomId}
                     onDone={requestClose}
                     onCancel={() => setPromptLeave(false)}
                   />
@@ -242,7 +257,6 @@ export function LobbyHeader({ showProfile, powerLevels }: LobbyHeaderProps) {
                 }}
               >
                 <LobbyMenu
-                  roomId={space.roomId}
                   powerLevels={powerLevels}
                   requestClose={() => setMenuAnchor(undefined)}
                 />

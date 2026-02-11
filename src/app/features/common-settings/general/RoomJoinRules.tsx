@@ -3,7 +3,6 @@ import { color, Text } from 'folds';
 import { JoinRule, MatrixError, RestrictedAllowType } from 'matrix-js-sdk';
 import { RoomJoinRulesEventContent } from 'matrix-js-sdk/lib/types';
 import { useAtomValue } from 'jotai';
-import { IPowerLevels, powerLevelAPI } from '../../../hooks/usePowerLevels';
 import {
   ExtendedJoinRules,
   JoinRulesSwitcher,
@@ -27,6 +26,12 @@ import {
 } from '../../../state/hooks/roomList';
 import { allRoomsAtom } from '../../../state/room-list/roomList';
 import { roomToParentsAtom } from '../../../state/room/roomToParents';
+import {
+  knockRestrictedSupported,
+  knockSupported,
+  restrictedSupported,
+} from '../../../utils/matrix';
+import { RoomPermissionsAPI } from '../../../hooks/useRoomPermissions';
 
 type RestrictedRoomAllowContent = {
   room_id: string;
@@ -34,27 +39,21 @@ type RestrictedRoomAllowContent = {
 };
 
 type RoomJoinRulesProps = {
-  powerLevels: IPowerLevels;
+  permissions: RoomPermissionsAPI;
 };
-export function RoomJoinRules({ powerLevels }: RoomJoinRulesProps) {
+export function RoomJoinRules({ permissions }: RoomJoinRulesProps) {
   const mx = useMatrixClient();
   const room = useRoom();
-  const roomVersion = parseInt(room.getVersion(), 10);
-  const allowKnockRestricted = roomVersion >= 10;
-  const allowRestricted = roomVersion >= 8;
-  const allowKnock = roomVersion >= 7;
+  const allowKnockRestricted = knockRestrictedSupported(room.getVersion());
+  const allowRestricted = restrictedSupported(room.getVersion());
+  const allowKnock = knockSupported(room.getVersion());
 
   const roomIdToParents = useAtomValue(roomToParentsAtom);
   const space = useSpaceOptionally();
   const subspacesScope = useRecursiveChildSpaceScopeFactory(mx, roomIdToParents);
   const subspaces = useSpaceChildren(allRoomsAtom, space?.roomId ?? '', subspacesScope);
 
-  const userPowerLevel = powerLevelAPI.getPowerLevel(powerLevels, mx.getSafeUserId());
-  const canEdit = powerLevelAPI.canSendStateEvent(
-    powerLevels,
-    StateEvent.RoomHistoryVisibility,
-    userPowerLevel
-  );
+  const canEdit = permissions.stateEvent(StateEvent.RoomHistoryVisibility, mx.getSafeUserId());
 
   const joinRuleEvent = useStateEvent(room, StateEvent.RoomJoinRules);
   const content = joinRuleEvent?.getContent<RoomJoinRulesEventContent>();

@@ -73,7 +73,7 @@ import * as customHtmlCss from '../../../styles/CustomHtml.css';
 import { useRoomNavigate } from '../../../hooks/useRoomNavigate';
 import { useRoomUnread } from '../../../state/hooks/unread';
 import { roomToUnreadAtom } from '../../../state/room/roomToUnread';
-import { markAsRead } from '../../../../client/action/notifications';
+import { markAsRead } from '../../../utils/notifications';
 import { ContainerColor } from '../../../styles/ContainerColor.css';
 import { VirtualTile } from '../../../components/virtualizer';
 import { UserAvatar } from '../../../components/user-avatar';
@@ -84,16 +84,19 @@ import { ScreenSize, useScreenSizeContext } from '../../../hooks/useScreenSize';
 import { BackRouteHandler } from '../../../components/BackRouteHandler';
 import { useMediaAuthentication } from '../../../hooks/useMediaAuthentication';
 import { allRoomsAtom } from '../../../state/room-list/roomList';
-import { usePowerLevels, usePowerLevelsAPI } from '../../../hooks/usePowerLevels';
-import {
-  getTagIconSrc,
-  useAccessibleTagColors,
-  usePowerLevelTags,
-} from '../../../hooks/usePowerLevelTags';
+import { usePowerLevels } from '../../../hooks/usePowerLevels';
+import { usePowerLevelTags } from '../../../hooks/usePowerLevelTags';
 import { useTheme } from '../../../hooks/useTheme';
 import { PowerIcon } from '../../../components/power';
 import colorMXID from '../../../../util/colorMXID';
 import { mDirectAtom } from '../../../state/mDirectList';
+import {
+  getPowerTagIconSrc,
+  useAccessiblePowerTagColors,
+  useGetMemberPowerTag,
+} from '../../../hooks/useMemberPowerTag';
+import { useRoomCreatorsTag } from '../../../hooks/useRoomCreatorsTag';
+import { useRoomCreators } from '../../../hooks/useRoomCreators';
 
 type RoomNotificationsGroup = {
   roomId: string;
@@ -205,6 +208,8 @@ type RoomNotificationsGroupProps = {
   hideActivity: boolean;
   onOpen: (roomId: string, eventId: string) => void;
   legacyUsernameColor?: boolean;
+  hour24Clock: boolean;
+  dateFormatString: string;
 };
 function RoomNotificationsGroupComp({
   room,
@@ -214,16 +219,22 @@ function RoomNotificationsGroupComp({
   hideActivity,
   onOpen,
   legacyUsernameColor,
+  hour24Clock,
+  dateFormatString,
 }: RoomNotificationsGroupProps) {
   const mx = useMatrixClient();
   const useAuthentication = useMediaAuthentication();
   const unread = useRoomUnread(room.roomId, roomToUnreadAtom);
 
   const powerLevels = usePowerLevels(room);
-  const { getPowerLevel } = usePowerLevelsAPI(powerLevels);
-  const [powerLevelTags, getPowerLevelTag] = usePowerLevelTags(room, powerLevels);
+  const creators = useRoomCreators(room);
+
+  const creatorsTag = useRoomCreatorsTag();
+  const powerLevelTags = usePowerLevelTags(room, powerLevels);
+  const getMemberPowerTag = useGetMemberPowerTag(room, creators, powerLevels);
+
   const theme = useTheme();
-  const accessibleTagColors = useAccessibleTagColors(theme.kind, powerLevelTags);
+  const accessibleTagColors = useAccessiblePowerTagColors(theme.kind, creatorsTag, powerLevelTags);
 
   const mentionClickHandler = useMentionClickHandler(room.roomId);
   const spoilerClickHandler = useSpoilerClickHandler();
@@ -443,13 +454,12 @@ function RoomNotificationsGroupComp({
           const threadRootId =
             relation?.rel_type === RelationType.Thread ? relation.event_id : undefined;
 
-          const senderPowerLevel = getPowerLevel(event.sender);
-          const powerLevelTag = getPowerLevelTag(senderPowerLevel);
-          const tagColor = powerLevelTag?.color
-            ? accessibleTagColors?.get(powerLevelTag.color)
+          const memberPowerTag = getMemberPowerTag(event.sender);
+          const tagColor = memberPowerTag?.color
+            ? accessibleTagColors?.get(memberPowerTag.color)
             : undefined;
-          const tagIconSrc = powerLevelTag?.icon
-            ? getTagIconSrc(mx, useAuthentication, powerLevelTag.icon)
+          const tagIconSrc = memberPowerTag?.icon
+            ? getPowerTagIconSrc(mx, useAuthentication, memberPowerTag.icon)
             : undefined;
 
           const usernameColor = legacyUsernameColor ? colorMXID(event.sender) : tagColor;
@@ -496,7 +506,11 @@ function RoomNotificationsGroupComp({
                       </Username>
                       {tagIconSrc && <PowerIcon size="100" iconSrc={tagIconSrc} />}
                     </Box>
-                    <Time ts={event.origin_server_ts} />
+                    <Time
+                      ts={event.origin_server_ts}
+                      hour24Clock={hour24Clock}
+                      dateFormatString={dateFormatString}
+                    />
                   </Box>
                   <Box shrink="No" gap="200" alignItems="Center">
                     <Chip
@@ -515,8 +529,7 @@ function RoomNotificationsGroupComp({
                     replyEventId={replyEventId}
                     threadRootId={threadRootId}
                     onClick={handleOpenClick}
-                    getPowerLevel={getPowerLevel}
-                    getPowerLevelTag={getPowerLevelTag}
+                    getMemberPowerTag={getMemberPowerTag}
                     accessibleTagColors={accessibleTagColors}
                     legacyUsernameColor={legacyUsernameColor}
                   />
@@ -549,6 +562,8 @@ export function Notifications() {
   const [mediaAutoLoad] = useSetting(settingsAtom, 'mediaAutoLoad');
   const [urlPreview] = useSetting(settingsAtom, 'urlPreview');
   const [legacyUsernameColor] = useSetting(settingsAtom, 'legacyUsernameColor');
+  const [hour24Clock] = useSetting(settingsAtom, 'hour24Clock');
+  const [dateFormatString] = useSetting(settingsAtom, 'dateFormatString');
   const screenSize = useScreenSizeContext();
   const mDirects = useAtomValue(mDirectAtom);
 
@@ -713,6 +728,8 @@ export function Notifications() {
                           legacyUsernameColor={
                             legacyUsernameColor || mDirects.has(groupRoom.roomId)
                           }
+                          hour24Clock={hour24Clock}
+                          dateFormatString={dateFormatString}
                         />
                       </VirtualTile>
                     );

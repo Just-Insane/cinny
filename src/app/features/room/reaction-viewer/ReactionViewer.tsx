@@ -20,12 +20,14 @@ import { getMemberDisplayName } from '../../../utils/room';
 import { eventWithShortcode, getMxIdLocalPart } from '../../../utils/matrix';
 import * as css from './ReactionViewer.css';
 import { useMatrixClient } from '../../../hooks/useMatrixClient';
-import { openProfileViewer } from '../../../../client/action/navigation';
 import { useRelations } from '../../../hooks/useRelations';
 import { Reaction } from '../../../components/message';
 import { getHexcodeForEmoji, getShortcodeFor } from '../../../plugins/emoji';
 import { UserAvatar } from '../../../components/user-avatar';
 import { useMediaAuthentication } from '../../../hooks/useMediaAuthentication';
+import { useOpenUserRoomProfile } from '../../../state/hooks/userRoomProfile';
+import { useSpaceOptionally } from '../../../hooks/useSpace';
+import { getMouseEventCords } from '../../../utils/dom';
 
 export type ReactionViewerProps = {
   room: Room;
@@ -41,6 +43,8 @@ export const ReactionViewer = as<'div', ReactionViewerProps>(
       relations,
       useCallback((rel) => [...(rel.getSortedAnnotationsByKey() ?? [])], [])
     );
+    const space = useSpaceOptionally();
+    const openProfile = useOpenUserRoomProfile();
 
     const [selectedKey, setSelectedKey] = useState<string>(() => {
       if (initialKey) return initialKey;
@@ -111,24 +115,31 @@ export const ReactionViewer = as<'div', ReactionViewerProps>(
                   const name = (member ? getName(member) : getMxIdLocalPart(senderId)) ?? senderId;
 
                   const avatarMxcUrl = member?.getMxcAvatarUrl();
-                  const avatarUrl = avatarMxcUrl ? mx.mxcUrlToHttp(
-                    avatarMxcUrl,
-                    100,
-                    100,
-                    'crop',
-                    undefined,
-                    false,
-                    useAuthentication
-                  ) : undefined;
+                  const avatarUrl = avatarMxcUrl
+                    ? mx.mxcUrlToHttp(
+                        avatarMxcUrl,
+                        100,
+                        100,
+                        'crop',
+                        undefined,
+                        false,
+                        useAuthentication
+                      )
+                    : undefined;
 
                   return (
                     <MenuItem
                       key={senderId}
                       style={{ padding: `0 ${config.space.S200}` }}
                       radii="400"
-                      onClick={() => {
-                        requestClose();
-                        openProfileViewer(senderId, room.roomId);
+                      onClick={(event) => {
+                        openProfile(
+                          room.roomId,
+                          space?.roomId,
+                          senderId,
+                          getMouseEventCords(event.nativeEvent),
+                          'Bottom'
+                        );
                       }}
                       before={
                         <Avatar size="200">

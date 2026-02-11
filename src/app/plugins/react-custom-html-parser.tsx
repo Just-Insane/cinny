@@ -1,5 +1,12 @@
 /* eslint-disable jsx-a11y/alt-text */
-import React, { ComponentPropsWithoutRef, ReactEventHandler, Suspense, lazy } from 'react';
+import React, {
+  ComponentPropsWithoutRef,
+  ReactEventHandler,
+  Suspense,
+  lazy,
+  useMemo,
+  useState,
+} from 'react';
 import {
   Element,
   Text as DOMText,
@@ -9,10 +16,11 @@ import {
 } from 'html-react-parser';
 import { MatrixClient } from 'matrix-js-sdk';
 import classNames from 'classnames';
-import { Scroll, Text } from 'folds';
+import { Box, Chip, config, Header, Icon, IconButton, Icons, Scroll, Text, toRem } from 'folds';
 import { IntermediateRepresentation, Opts as LinkifyOpts, OptFn } from 'linkifyjs';
 import Linkify from 'linkify-react';
 import { ErrorBoundary } from 'react-error-boundary';
+import { ChildNode } from 'domhandler';
 import * as css from '../styles/CustomHtml.css';
 import {
   getMxIdLocalPart,
@@ -31,7 +39,8 @@ import {
   testMatrixTo,
 } from './matrix-to';
 import { onEnterOrSpace } from '../utils/keyboard';
-import { tryDecodeURIComponent } from '../utils/dom';
+import { copyToClipboard, tryDecodeURIComponent } from '../utils/dom';
+import { useTimeoutToggle } from '../hooks/useTimeoutToggle';
 
 const ReactPrism = lazy(() => import('./react-prism/ReactPrism'));
 
@@ -195,6 +204,111 @@ export const highlightText = (
     );
   });
 
+/**
+ * Recursively extracts and concatenates all text content from an array of ChildNode objects.
+ *
+ * @param {ChildNode[]} nodes - An array of ChildNode objects to extract text from.
+ * @returns {string} The concatenated plain text content of all descendant text nodes.
+ */
+const extractTextFromChildren = (nodes: ChildNode[]): string => {
+  let text = '';
+
+  nodes.forEach((node) => {
+    if (node.type === 'text') {
+      text += node.data;
+    } else if (node instanceof Element && node.children) {
+      text += extractTextFromChildren(node.children);
+    }
+  });
+
+  return text;
+};
+
+export function CodeBlock({
+  children,
+  opts,
+}: {
+  children: ChildNode[];
+  opts: HTMLReactParserOptions;
+}) {
+  const code = children[0];
+  const languageClass =
+    code instanceof Element && code.name === 'code' ? code.attribs.class : undefined;
+  const language =
+    languageClass && languageClass.startsWith('language-')
+      ? languageClass.replace('language-', '')
+      : languageClass;
+
+  const LINE_LIMIT = 14;
+  const largeCodeBlock = useMemo(
+    () => extractTextFromChildren(children).split('\n').length > LINE_LIMIT,
+    [children]
+  );
+
+  const [expanded, setExpand] = useState(false);
+  const [copied, setCopied] = useTimeoutToggle();
+
+  const handleCopy = () => {
+    copyToClipboard(extractTextFromChildren(children));
+    setCopied();
+  };
+
+  const toggleExpand = () => {
+    setExpand(!expanded);
+  };
+
+  return (
+    <Text size="T300" as="pre" className={css.CodeBlock}>
+      <Header variant="Surface" size="400" className={css.CodeBlockHeader}>
+        <Box grow="Yes">
+          <Text size="L400" truncate>
+            {language ?? 'Code'}
+          </Text>
+        </Box>
+        <Box shrink="No" gap="200">
+          <Chip
+            variant={copied ? 'Success' : 'Surface'}
+            fill="None"
+            radii="Pill"
+            onClick={handleCopy}
+            before={copied && <Icon size="50" src={Icons.Check} />}
+          >
+            <Text size="B300">{copied ? 'Copied' : 'Copy'}</Text>
+          </Chip>
+          {largeCodeBlock && (
+            <IconButton
+              size="300"
+              variant="SurfaceVariant"
+              outlined
+              radii="300"
+              onClick={toggleExpand}
+              aria-label={expanded ? 'Collapse' : 'Expand'}
+            >
+              <Icon size="50" src={expanded ? Icons.ChevronTop : Icons.ChevronBottom} />
+            </IconButton>
+          )}
+        </Box>
+      </Header>
+      <Scroll
+        style={{
+          maxHeight: largeCodeBlock && !expanded ? toRem(300) : undefined,
+          paddingBottom: largeCodeBlock ? config.space.S400 : undefined,
+        }}
+        direction="Both"
+        variant="SurfaceVariant"
+        size="300"
+        visibility="Hover"
+        hideTrack
+      >
+        <div id="code-block-content" className={css.CodeBlockInternal}>
+          {domToReact(children, opts)}
+        </div>
+      </Scroll>
+      {largeCodeBlock && !expanded && <Box className={css.CodeBlockBottomShadow} />}
+    </Text>
+  );
+}
+
 export const getReactCustomHtmlParser = (
   mx: MatrixClient,
   roomId: string | undefined,
@@ -269,19 +383,7 @@ export const getReactCustomHtmlParser = (
         }
 
         if (name === 'pre') {
-          return (
-            <Text {...props} as="pre" className={css.CodeBlock}>
-              <Scroll
-                direction="Horizontal"
-                variant="Secondary"
-                size="300"
-                visibility="Hover"
-                hideTrack
-              >
-                <div className={css.CodeBlockInternal}>{domToReact(children, opts)}</div>
-              </Scroll>
-            </Text>
-          );
+          return <CodeBlock opts={opts}>{children}</CodeBlock>;
         }
 
         if (name === 'blockquote') {
@@ -331,9 +433,9 @@ export const getReactCustomHtmlParser = (
             }
           } else {
             return (
-              <code className={css.Code} {...props}>
+              <Text as="code" size="T300" className={css.Code} {...props}>
                 {domToReact(children, opts)}
-              </code>
+              </Text>
             );
           }
         }

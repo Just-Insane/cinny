@@ -10,8 +10,8 @@ import * as css from './Reply.css';
 import { MessageBadEncryptedContent, MessageDeletedContent, MessageFailedContent } from './content';
 import { scaleSystemEmoji } from '../../plugins/react-custom-html-parser';
 import { useRoomEvent } from '../../hooks/useRoomEvent';
-import { GetPowerLevelTag } from '../../hooks/usePowerLevelTags';
 import colorMXID from '../../../util/colorMXID';
+import { GetMemberPowerTag } from '../../hooks/useMemberPowerTag';
 
 type ReplyLayoutProps = {
   userColor?: string;
@@ -38,9 +38,16 @@ export const ReplyLayout = as<'div', ReplyLayoutProps>(
 );
 
 export const ThreadIndicator = as<'div'>(({ ...props }, ref) => (
-  <Box className={css.ThreadIndicator} alignItems="Center" {...props} ref={ref}>
-    <Icon className={css.ThreadIndicatorIcon} src={Icons.Message} />
-    <Text size="T200">Threaded reply</Text>
+  <Box
+    shrink="No"
+    className={css.ThreadIndicator}
+    alignItems="Center"
+    gap="100"
+    {...props}
+    ref={ref}
+  >
+    <Icon size="50" src={Icons.Thread} />
+    <Text size="L400">Thread</Text>
   </Box>
 ));
 
@@ -50,8 +57,7 @@ type ReplyProps = {
   replyEventId: string;
   threadRootId?: string | undefined;
   onClick?: MouseEventHandler | undefined;
-  getPowerLevel?: (userId: string) => number;
-  getPowerLevelTag?: GetPowerLevelTag;
+  getMemberPowerTag?: GetMemberPowerTag;
   accessibleTagColors?: Map<string, string>;
   legacyUsernameColor?: boolean;
 };
@@ -64,8 +70,7 @@ export const Reply = as<'div', ReplyProps>(
       replyEventId,
       threadRootId,
       onClick,
-      getPowerLevel,
-      getPowerLevelTag,
+      getMemberPowerTag,
       accessibleTagColors,
       legacyUsernameColor,
       ...props
@@ -81,8 +86,7 @@ export const Reply = as<'div', ReplyProps>(
 
     const { body } = replyEvent?.getContent() ?? {};
     const sender = replyEvent?.getSender();
-    const senderPL = sender && getPowerLevel?.(sender);
-    const powerTag = typeof senderPL === 'number' ? getPowerLevelTag?.(senderPL) : undefined;
+    const powerTag = sender ? getMemberPowerTag?.(sender) : undefined;
     const tagColor = powerTag?.color ? accessibleTagColors?.get(powerTag.color) : undefined;
 
     const usernameColor = legacyUsernameColor ? colorMXID(sender ?? replyEventId) : tagColor;
@@ -97,7 +101,7 @@ export const Reply = as<'div', ReplyProps>(
     const bodyJSX = body ? scaleSystemEmoji(trimReplyFromBody(body)) : fallbackBody;
 
     return (
-      <Box direction="Column" alignItems="Start" {...props} ref={ref}>
+      <Box direction="Row" gap="200" alignItems="Center" {...props} ref={ref}>
         {threadRootId && (
           <ThreadIndicator as="button" data-event-id={threadRootId} onClick={onClick} />
         )}

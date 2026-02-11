@@ -1,14 +1,11 @@
 import React, { useRef } from 'react';
-import { Icon, Icons, Scroll } from 'folds';
+import { Scroll } from 'folds';
 
 import {
   Sidebar,
   SidebarContent,
   SidebarStackSeparator,
   SidebarStack,
-  SidebarAvatar,
-  SidebarItemTooltip,
-  SidebarItem,
 } from '../../components/sidebar';
 import {
   DirectTab,
@@ -18,8 +15,9 @@ import {
   ExploreTab,
   SettingsTab,
   UnverifiedTab,
+  SearchTab,
 } from './sidebar';
-import { openCreateRoom, openSearch } from '../../../client/action/navigation';
+import { CreateTab } from './sidebar/CreateTab';
 
 export function SidebarNav() {
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -37,20 +35,7 @@ export function SidebarNav() {
             <SidebarStackSeparator />
             <SidebarStack>
               <ExploreTab />
-              <SidebarItem>
-                <SidebarItemTooltip tooltip="Create Space">
-                  {(triggerRef) => (
-                    <SidebarAvatar
-                      as="button"
-                      ref={triggerRef}
-                      outlined
-                      onClick={() => openCreateRoom(true)}
-                    >
-                      <Icon src={Icons.Plus} />
-                    </SidebarAvatar>
-                  )}
-                </SidebarItemTooltip>
-              </SidebarItem>
+              <CreateTab />
             </SidebarStack>
           </Scroll>
         }
@@ -58,23 +43,8 @@ export function SidebarNav() {
           <>
             <SidebarStackSeparator />
             <SidebarStack>
-              <SidebarItem>
-                <SidebarItemTooltip tooltip="Search">
-                  {(triggerRef) => (
-                    <SidebarAvatar
-                      as="button"
-                      ref={triggerRef}
-                      outlined
-                      onClick={() => openSearch()}
-                    >
-                      <Icon src={Icons.Search} />
-                    </SidebarAvatar>
-                  )}
-                </SidebarItemTooltip>
-              </SidebarItem>
-
+              <SearchTab />
               <UnverifiedTab />
-
               <InboxTab />
               <SettingsTab />
             </SidebarStack>

@@ -8,7 +8,8 @@ import { useMatrixClient } from '../../hooks/useMatrixClient';
 import { getMxIdLocalPart } from '../../utils/matrix';
 import { getMemberAvatarMxc, getMemberDisplayName } from '../../utils/room';
 import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
-import { openProfileViewer } from '../../../client/action/navigation';
+import { useOpenUserRoomProfile } from '../../state/hooks/userRoomProfile';
+import { useSpaceOptionally } from '../../hooks/useSpace';
 import * as css from './CallView.css';
 
 type CallViewUserProps = {
@@ -35,6 +36,8 @@ export const CallViewUserBase = as<'div'>(({ className, ...props }, ref) => (
 export function CallViewUser({ room, callMembership }: CallViewUserProps) {
   const mx = useMatrixClient();
   const useAuthentication = useMediaAuthentication();
+  const openProfile = useOpenUserRoomProfile();
+  const space = useSpaceOptionally();
   const userId = callMembership.sender ?? '';
   const avatarMxcUrl = getMemberAvatarMxc(room, userId);
   const avatarUrl = avatarMxcUrl
@@ -42,8 +45,8 @@ export function CallViewUser({ room, callMembership }: CallViewUserProps) {
     : undefined;
   const getName = getMemberDisplayName(room, userId) ?? getMxIdLocalPart(userId);
 
-  const handleUserClick = () => {
-    openProfileViewer(userId, room.roomId);
+  const handleUserClick: React.MouseEventHandler<HTMLButtonElement> = (evt) => {
+    openProfile(room.roomId, space?.roomId, userId, evt.currentTarget.getBoundingClientRect());
   };
 
   return (

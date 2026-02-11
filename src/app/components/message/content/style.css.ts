@@ -25,6 +25,7 @@ export const AbsoluteFooter = style([
   DefaultReset,
   {
     position: 'absolute',
+    pointerEvents: 'none',
     bottom: config.space.S100,
     left: config.space.S100,
     right: config.space.S100,

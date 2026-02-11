@@ -65,6 +65,8 @@ import { testBadWords } from '../../../plugins/bad-words';
 import { allRoomsAtom } from '../../../state/room-list/roomList';
 import { useIgnoredUsers } from '../../../hooks/useIgnoredUsers';
 import { useReportRoomSupported } from '../../../hooks/useReportRoomSupported';
+import { useSetting } from '../../../state/hooks/settings';
+import { settingsAtom } from '../../../state/settings';
 
 const COMPACT_CARD_WIDTH = 548;
 
@@ -79,6 +81,7 @@ type InviteData = {
   senderId: string;
   senderName: string;
   inviteTs?: number;
+  reason?: string;
 
   isSpace: boolean;
   isDirect: boolean;
@@ -100,11 +103,17 @@ const makeInviteData = (mx: MatrixClient, room: Room, useAuthentication: boolean
   const member = room.getMember(userId);
   const memberEvent = member?.events.member;
 
+  const content = memberEvent?.getContent();
   const senderId = memberEvent?.getSender();
+
   const senderName = senderId
     ? getMemberDisplayName(room, senderId) ?? getMxIdLocalPart(senderId) ?? senderId
     : undefined;
-  const inviteTs = memberEvent?.getTs() ?? 0;
+  const inviteTs = memberEvent?.getTs();
+  const reason =
+    content && 'reason' in content && typeof content.reason === 'string'
+      ? content.reason
+      : undefined;
 
   return {
     room,
@@ -117,6 +126,7 @@ const makeInviteData = (mx: MatrixClient, room: Room, useAuthentication: boolean
     senderId: senderId ?? 'Unknown',
     senderName: senderName ?? 'Unknown',
     inviteTs,
+    reason,
 
     isSpace: isSpace(room),
     isDirect: direct,
@@ -128,17 +138,27 @@ const hasBadWords = (invite: InviteData): boolean =>
   testBadWords(invite.roomName) ||
   testBadWords(invite.roomTopic ?? '') ||
   testBadWords(invite.senderName) ||
-  testBadWords(invite.senderId);
+  testBadWords(invite.senderId) ||
+  testBadWords(invite.reason || '');
 
 type NavigateHandler = (roomId: string, space: boolean) => void;
 
 type InviteCardProps = {
   invite: InviteData;
   compact?: boolean;
+  hour24Clock: boolean;
+  dateFormatString: string;
   onNavigate: NavigateHandler;
   hideAvatar: boolean;
 };
-function InviteCard({ invite, compact, onNavigate, hideAvatar }: InviteCardProps) {
+function InviteCard({
+  invite,
+  compact,
+  hour24Clock,
+  dateFormatString,
+  onNavigate,
+  hideAvatar,
+}: InviteCardProps) {
   const mx = useMatrixClient();
   const userId = mx.getSafeUserId();
 
@@ -173,7 +193,7 @@ function InviteCard({ invite, compact, onNavigate, hideAvatar }: InviteCardProps
       variant="SurfaceVariant"
       direction="Column"
       gap="300"
-      style={{ padding: `${config.space.S400} ${config.space.S400} ${config.space.S200}` }}
+      style={{ padding: config.space.S400 }}
     >
       {(invite.isEncrypted || invite.isDirect || invite.isSpace) && (
         <Box gap="200" alignItems="Center">
@@ -287,16 +307,29 @@ function InviteCard({ invite, compact, onNavigate, hideAvatar }: InviteCardProps
           </Box>
         </Box>
       </Box>
-      <Box gap="200" alignItems="Baseline">
-        <Box grow="Yes">
-          <Text size="T200" priority="300">
-            From: <b>{invite.senderId}</b>
-          </Text>
-        </Box>
-        {invite.inviteTs && (
-          <Box shrink="No">
-            <Time size="T200" ts={invite.inviteTs} priority="300" />
+      <Box direction="Column">
+        <Box gap="200" alignItems="Baseline">
+          <Box grow="Yes">
+            <Text size="T200" priority="300">
+              From: <b>{invite.senderId}</b>
+            </Text>
           </Box>
+          {typeof invite.inviteTs === 'number' && invite.inviteTs !== 0 && (
+            <Box shrink="No">
+              <Time
+                size="T200"
+                ts={invite.inviteTs}
+                hour24Clock={hour24Clock}
+                dateFormatString={dateFormatString}
+                priority="300"
+              />
+            </Box>
+          )}
+        </Box>
+        {invite.reason && (
+          <Text size="T200" priority="300">
+            Reason: {invite.reason}
+          </Text>
         )}
       </Box>
     </SequenceCard>
@@ -384,8 +417,16 @@ type KnownInvitesProps = {
   invites: InviteData[];
   handleNavigate: NavigateHandler;
   compact: boolean;
+  hour24Clock: boolean;
+  dateFormatString: string;
 };
-function KnownInvites({ invites, handleNavigate, compact }: KnownInvitesProps) {
+function KnownInvites({
+  invites,
+  handleNavigate,
+  compact,
+  hour24Clock,
+  dateFormatString,
+}: KnownInvitesProps) {
   return (
     <Box direction="Column" gap="200">
       <Text size="H4">Primary</Text>
@@ -396,6 +437,8 @@ function KnownInvites({ invites, handleNavigate, compact }: KnownInvitesProps) {
               key={invite.roomId}
               invite={invite}
               compact={compact}
+              hour24Clock={hour24Clock}
+              dateFormatString={dateFormatString}
               onNavigate={handleNavigate}
               hideAvatar={false}
             />
@@ -420,8 +463,16 @@ type UnknownInvitesProps = {
   invites: InviteData[];
   handleNavigate: NavigateHandler;
   compact: boolean;
+  hour24Clock: boolean;
+  dateFormatString: string;
 };
-function UnknownInvites({ invites, handleNavigate, compact }: UnknownInvitesProps) {
+function UnknownInvites({
+  invites,
+  handleNavigate,
+  compact,
+  hour24Clock,
+  dateFormatString,
+}: UnknownInvitesProps) {
   const mx = useMatrixClient();
 
   const [declineAllStatus, declineAll] = useAsyncCallback(
@@ -459,6 +510,8 @@ function UnknownInvites({ invites, handleNavigate, compact }: UnknownInvitesProp
               key={invite.roomId}
               invite={invite}
               compact={compact}
+              hour24Clock={hour24Clock}
+              dateFormatString={dateFormatString}
               onNavigate={handleNavigate}
               hideAvatar
             />
@@ -483,8 +536,16 @@ type SpamInvitesProps = {
   invites: InviteData[];
   handleNavigate: NavigateHandler;
   compact: boolean;
+  hour24Clock: boolean;
+  dateFormatString: string;
 };
-function SpamInvites({ invites, handleNavigate, compact }: SpamInvitesProps) {
+function SpamInvites({
+  invites,
+  handleNavigate,
+  compact,
+  hour24Clock,
+  dateFormatString,
+}: SpamInvitesProps) {
   const mx = useMatrixClient();
   const [showInvites, setShowInvites] = useState(false);
 
@@ -608,6 +669,8 @@ function SpamInvites({ invites, handleNavigate, compact }: SpamInvitesProps) {
                 key={invite.roomId}
                 invite={invite}
                 compact={compact}
+                hour24Clock={hour24Clock}
+                dateFormatString={dateFormatString}
                 onNavigate={handleNavigate}
                 hideAvatar
               />
@@ -671,6 +734,9 @@ export function Invites() {
   );
   const screenSize = useScreenSizeContext();
 
+  const [hour24Clock] = useSetting(settingsAtom, 'hour24Clock');
+  const [dateFormatString] = useSetting(settingsAtom, 'dateFormatString');
+
   const handleNavigate = (roomId: string, space: boolean) => {
     if (space) {
       navigateSpace(roomId);
@@ -723,6 +789,8 @@ export function Invites() {
                   <KnownInvites
                     invites={knownInvites}
                     compact={compact}
+                    hour24Clock={hour24Clock}
+                    dateFormatString={dateFormatString}
                     handleNavigate={handleNavigate}
                   />
                 )}
@@ -731,6 +799,8 @@ export function Invites() {
                   <UnknownInvites
                     invites={unknownInvites}
                     compact={compact}
+                    hour24Clock={hour24Clock}
+                    dateFormatString={dateFormatString}
                     handleNavigate={handleNavigate}
                   />
                 )}
@@ -739,6 +809,8 @@ export function Invites() {
                   <SpamInvites
                     invites={spamInvites}
                     compact={compact}
+                    hour24Clock={hour24Clock}
+                    dateFormatString={dateFormatString}
                     handleNavigate={handleNavigate}
                   />
                 )}

@@ -28,8 +28,8 @@ import {
   _ROOM_PATH,
   _SEARCH_PATH,
   _SERVER_PATH,
+  CREATE_PATH,
 } from './paths';
-import { isAuthenticated } from '../../client/state/auth';
 import {
   getAppPathFromHref,
   getExploreFeaturedPath,
@@ -61,6 +61,13 @@ import { AutoRestoreBackupOnVerification } from '../components/BackupRestore';
 import { RoomSettingsRenderer } from '../features/room-settings';
 import { ClientRoomsNotificationPreferences } from './client/ClientRoomsNotificationPreferences';
 import { SpaceSettingsRenderer } from '../features/space-settings';
+import { UserRoomProfileRenderer } from '../components/UserRoomProfileRenderer';
+import { CreateRoomModalRenderer } from '../features/create-room';
+import { HomeCreateRoom } from './client/home/CreateRoom';
+import { Create } from './client/create';
+import { CreateSpaceModalRenderer } from '../features/create-space';
+import { SearchModalRenderer } from '../features/search';
+import { getFallbackSession } from '../state/sessions';
 import { CallProvider } from './client/call/CallProvider';
 import { PersistentCallContainer } from './client/call/PersistentCallContainer';
 
@@ -73,7 +80,7 @@ export const createRouter = (clientConfig: ClientConfig, screenSize: ScreenSize)
       <Route
         index
         loader={() => {
-          if (isAuthenticated()) return redirect(getHomePath());
+          if (getFallbackSession()) return redirect(getHomePath());
           const afterLoginPath = getAppPathFromHref(getOriginBaseUrl(), window.location.href);
           if (afterLoginPath) setAfterLoginRedirectPath(afterLoginPath);
           return redirect(getLoginPath());
@@ -81,7 +88,7 @@ export const createRouter = (clientConfig: ClientConfig, screenSize: ScreenSize)
       />
       <Route
         loader={() => {
-          if (isAuthenticated()) {
+          if (getFallbackSession()) {
             return redirect(getHomePath());
           }
 
@@ -101,7 +108,7 @@ export const createRouter = (clientConfig: ClientConfig, screenSize: ScreenSize)
 
       <Route
         loader={() => {
-          if (!isAuthenticated()) {
+          if (!getFallbackSession()) {
             const afterLoginPath = getAppPathFromHref(
               getOriginBaseUrl(hashRouter),
               window.location.href
@@ -131,6 +138,10 @@ export const createRouter = (clientConfig: ClientConfig, screenSize: ScreenSize)
                           </PersistentCallContainer>
                         </ClientLayout>
                       </CallProvider>
+                      <SearchModalRenderer />
+                      <UserRoomProfileRenderer />
+                      <CreateRoomModalRenderer />
+                      <CreateSpaceModalRenderer />
                       <RoomSettingsRenderer />
                       <SpaceSettingsRenderer />
                       <ReceiveSelfDeviceVerification />
@@ -158,7 +169,7 @@ export const createRouter = (clientConfig: ClientConfig, screenSize: ScreenSize)
           }
         >
           {mobile ? null : <Route index element={<WelcomePage />} />}
-          <Route path={_CREATE_PATH} element={<p>create</p>} />
+          <Route path={_CREATE_PATH} element={<HomeCreateRoom />} />
           <Route path={_JOIN_PATH} element={<p>join</p>} />
           <Route path={_SEARCH_PATH} element={<HomeSearch />} />
           <Route
@@ -259,6 +270,7 @@ export const createRouter = (clientConfig: ClientConfig, screenSize: ScreenSize)
           <Route path={_FEATURED_PATH} element={<FeaturedRooms />} />
           <Route path={_SERVER_PATH} element={<PublicRooms />} />
         </Route>
+        <Route path={CREATE_PATH} element={<Create />} />
         <Route
           path={INBOX_PATH}
           element={

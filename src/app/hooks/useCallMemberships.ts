@@ -9,10 +9,16 @@ import { useEffect, useState } from 'react';
 export const useCallMembers = (mx: MatrixClient, roomId: string): CallMembership[] => {
   const [memberships, setMemberships] = useState<CallMembership[]>([]);
   const room = mx.getRoom(roomId);
-  const mxr = mx.matrixRTC.getRoomSession(room);
   useEffect(() => {
+    if (!room) {
+      setMemberships([]);
+      return undefined;
+    }
+
+    const mxr = mx.matrixRTC.getRoomSession(room);
+
     const updateMemberships = () => {
-      if (!room?.isCallRoom()) return;
+      if (!room.isCallRoom()) return;
       setMemberships(MatrixRTCSession.callMembershipsForRoom(room));
     };
 
@@ -22,7 +28,7 @@ export const useCallMembers = (mx: MatrixClient, roomId: string): CallMembership
     return () => {
       mxr.removeListener(MatrixRTCSessionEvent.MembershipsChanged, updateMemberships);
     };
-  }, [mx, mxr, room, roomId]);
+  }, [mx, room, roomId]);
 
   return memberships;
 };

@@ -39,15 +39,18 @@ import { UserAvatar } from '../../components/user-avatar';
 import { useMentionClickHandler } from '../../hooks/useMentionClickHandler';
 import { useSpoilerClickHandler } from '../../hooks/useSpoilerClickHandler';
 import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
-import { usePowerLevels, usePowerLevelsAPI } from '../../hooks/usePowerLevels';
-import {
-  getTagIconSrc,
-  useAccessibleTagColors,
-  usePowerLevelTags,
-} from '../../hooks/usePowerLevelTags';
+import { usePowerLevels } from '../../hooks/usePowerLevels';
+import { usePowerLevelTags } from '../../hooks/usePowerLevelTags';
 import { useTheme } from '../../hooks/useTheme';
 import { PowerIcon } from '../../components/power';
 import colorMXID from '../../../util/colorMXID';
+import {
+  getPowerTagIconSrc,
+  useAccessiblePowerTagColors,
+  useGetMemberPowerTag,
+} from '../../hooks/useMemberPowerTag';
+import { useRoomCreators } from '../../hooks/useRoomCreators';
+import { useRoomCreatorsTag } from '../../hooks/useRoomCreatorsTag';
 
 type SearchResultGroupProps = {
   room: Room;
@@ -57,6 +60,8 @@ type SearchResultGroupProps = {
   urlPreview?: boolean;
   onOpen: (roomId: string, eventId: string) => void;
   legacyUsernameColor?: boolean;
+  hour24Clock: boolean;
+  dateFormatString: string;
 };
 export function SearchResultGroup({
   room,
@@ -66,16 +71,22 @@ export function SearchResultGroup({
   urlPreview,
   onOpen,
   legacyUsernameColor,
+  hour24Clock,
+  dateFormatString,
 }: SearchResultGroupProps) {
   const mx = useMatrixClient();
   const useAuthentication = useMediaAuthentication();
   const highlightRegex = useMemo(() => makeHighlightRegex(highlights), [highlights]);
 
   const powerLevels = usePowerLevels(room);
-  const { getPowerLevel } = usePowerLevelsAPI(powerLevels);
-  const [powerLevelTags, getPowerLevelTag] = usePowerLevelTags(room, powerLevels);
+  const creators = useRoomCreators(room);
+
+  const creatorsTag = useRoomCreatorsTag();
+  const powerLevelTags = usePowerLevelTags(room, powerLevels);
+  const getMemberPowerTag = useGetMemberPowerTag(room, creators, powerLevels);
+
   const theme = useTheme();
-  const accessibleTagColors = useAccessibleTagColors(theme.kind, powerLevelTags);
+  const accessibleTagColors = useAccessiblePowerTagColors(theme.kind, creatorsTag, powerLevelTags);
 
   const mentionClickHandler = useMentionClickHandler(room.roomId);
   const spoilerClickHandler = useSpoilerClickHandler();
@@ -222,13 +233,12 @@ export function SearchResultGroup({
           const threadRootId =
             relation?.rel_type === RelationType.Thread ? relation.event_id : undefined;
 
-          const senderPowerLevel = getPowerLevel(event.sender);
-          const powerLevelTag = getPowerLevelTag(senderPowerLevel);
-          const tagColor = powerLevelTag?.color
-            ? accessibleTagColors?.get(powerLevelTag.color)
+          const memberPowerTag = getMemberPowerTag(event.sender);
+          const tagColor = memberPowerTag?.color
+            ? accessibleTagColors?.get(memberPowerTag.color)
             : undefined;
-          const tagIconSrc = powerLevelTag?.icon
-            ? getTagIconSrc(mx, useAuthentication, powerLevelTag.icon)
+          const tagIconSrc = memberPowerTag?.icon
+            ? getPowerTagIconSrc(mx, useAuthentication, memberPowerTag.icon)
             : undefined;
 
           const usernameColor = legacyUsernameColor ? colorMXID(event.sender) : tagColor;
@@ -275,7 +285,11 @@ export function SearchResultGroup({
                       </Username>
                       {tagIconSrc && <PowerIcon size="100" iconSrc={tagIconSrc} />}
                     </Box>
-                    <Time ts={event.origin_server_ts} />
+                    <Time
+                      ts={event.origin_server_ts}
+                      hour24Clock={hour24Clock}
+                      dateFormatString={dateFormatString}
+                    />
                   </Box>
                   <Box shrink="No" gap="200" alignItems="Center">
                     <Chip
@@ -294,8 +308,7 @@ export function SearchResultGroup({
                     replyEventId={replyEventId}
                     threadRootId={threadRootId}
                     onClick={handleOpenClick}
-                    getPowerLevel={getPowerLevel}
-                    getPowerLevelTag={getPowerLevelTag}
+                    getMemberPowerTag={getMemberPowerTag}
                     accessibleTagColors={accessibleTagColors}
                     legacyUsernameColor={legacyUsernameColor}
                   />

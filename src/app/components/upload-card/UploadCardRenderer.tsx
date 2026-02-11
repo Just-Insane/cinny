@@ -1,19 +1,66 @@
-import React, { useEffect } from 'react';
+import React, { ReactNode, useEffect } from 'react';
 import { Box, Chip, Icon, IconButton, Icons, Text, color, config, toRem } from 'folds';
 import { UploadCard, UploadCardError, UploadCardProgress } from './UploadCard';
 import { UploadStatus, UploadSuccess, useBindUploadAtom } from '../../state/upload';
 import { useMatrixClient } from '../../hooks/useMatrixClient';
 import { TUploadContent } from '../../utils/matrix';
-import { getFileTypeIcon } from '../../utils/common';
+import { bytesToSize, getFileTypeIcon } from '../../utils/common';
 import {
   roomUploadAtomFamily,
   TUploadItem,
   TUploadMetadata,
 } from '../../state/room/roomInputDrafts';
 import { useObjectURL } from '../../hooks/useObjectURL';
+import { useMediaConfig } from '../../hooks/useMediaConfig';
 
-type ImagePreviewProps = { fileItem: TUploadItem; onSpoiler: (marked: boolean) => void };
-function ImagePreview({ fileItem, onSpoiler }: ImagePreviewProps) {
+type PreviewImageProps = {
+  fileItem: TUploadItem;
+};
+function PreviewImage({ fileItem }: PreviewImageProps) {
+  const { originalFile, metadata } = fileItem;
+  const fileUrl = useObjectURL(originalFile);
+
+  return (
+    <img
+      style={{
+        objectFit: 'contain',
+        width: '100%',
+        height: toRem(152),
+        filter: metadata.markedAsSpoiler ? 'blur(44px)' : undefined,
+      }}
+      alt={originalFile.name}
+      src={fileUrl}
+    />
+  );
+}
+
+type PreviewVideoProps = {
+  fileItem: TUploadItem;
+};
+function PreviewVideo({ fileItem }: PreviewVideoProps) {
+  const { originalFile, metadata } = fileItem;
+  const fileUrl = useObjectURL(originalFile);
+
+  return (
+    // eslint-disable-next-line jsx-a11y/media-has-caption
+    <video
+      style={{
+        objectFit: 'contain',
+        width: '100%',
+        height: toRem(152),
+        filter: metadata.markedAsSpoiler ? 'blur(44px)' : undefined,
+      }}
+      src={fileUrl}
+    />
+  );
+}
+
+type MediaPreviewProps = {
+  fileItem: TUploadItem;
+  onSpoiler: (marked: boolean) => void;
+  children: ReactNode;
+};
+function MediaPreview({ fileItem, onSpoiler, children }: MediaPreviewProps) {
   const { originalFile, metadata } = fileItem;
   const fileUrl = useObjectURL(originalFile);
 
@@ -26,16 +73,7 @@ function ImagePreview({ fileItem, onSpoiler }: ImagePreviewProps) {
         position: 'relative',
       }}
     >
-      <img
-        style={{
-          objectFit: 'contain',
-          width: '100%',
-          height: toRem(152),
-          filter: fileItem.metadata.markedAsSpoiler ? 'blur(44px)' : undefined,
-        }}
-        src={fileUrl}
-        alt={originalFile.name}
-      />
+      {children}
       <Box
         justifyContent="End"
         style={{
@@ -75,12 +113,18 @@ export function UploadCardRenderer({
   onComplete,
 }: UploadCardRendererProps) {
   const mx = useMatrixClient();
+  const mediaConfig = useMediaConfig();
+  const allowSize = mediaConfig['m.upload.size'] || Infinity;
+
   const uploadAtom = roomUploadAtomFamily(fileItem.file);
   const { metadata } = fileItem;
   const { upload, startUpload, cancelUpload } = useBindUploadAtom(mx, uploadAtom, isEncrypted);
   const { file } = upload;
+  const fileSizeExceeded = file.size >= allowSize;
 
-  if (upload.status === UploadStatus.Idle) startUpload();
+  if (upload.status === UploadStatus.Idle && !fileSizeExceeded) {
+    startUpload();
+  }
 
   const handleSpoiler = (marked: boolean) => {
     setMetadata(fileItem, { ...metadata, markedAsSpoiler: marked });
@@ -129,9 +173,16 @@ export function UploadCardRenderer({
       bottom={
         <>
           {fileItem.originalFile.type.startsWith('image') && (
-            <ImagePreview fileItem={fileItem} onSpoiler={handleSpoiler} />
+            <MediaPreview fileItem={fileItem} onSpoiler={handleSpoiler}>
+              <PreviewImage fileItem={fileItem} />
+            </MediaPreview>
           )}
-          {upload.status === UploadStatus.Idle && (
+          {fileItem.originalFile.type.startsWith('video') && (
+            <MediaPreview fileItem={fileItem} onSpoiler={handleSpoiler}>
+              <PreviewVideo fileItem={fileItem} />
+            </MediaPreview>
+          )}
+          {upload.status === UploadStatus.Idle && !fileSizeExceeded && (
             <UploadCardProgress sentBytes={0} totalBytes={file.size} />
           )}
           {upload.status === UploadStatus.Loading && (
@@ -140,6 +191,15 @@ export function UploadCardRenderer({
           {upload.status === UploadStatus.Error && (
             <UploadCardError>
               <Text size="T200">{upload.error.message}</Text>
+            </UploadCardError>
+          )}
+          {upload.status === UploadStatus.Idle && fileSizeExceeded && (
+            <UploadCardError>
+              <Text size="T200">
+                The file size exceeds the limit. Maximum allowed size is{' '}
+                <b>{bytesToSize(allowSize)}</b>, but the uploaded file is{' '}
+                <b>{bytesToSize(file.size)}</b>.
+              </Text>
             </UploadCardError>
           )}
         </>

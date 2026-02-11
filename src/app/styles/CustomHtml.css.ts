@@ -1,6 +1,7 @@
 import { style } from '@vanilla-extract/css';
 import { recipe } from '@vanilla-extract/recipes';
 import { color, config, DefaultReset, toRem } from 'folds';
+import { ContainerColor } from './ContainerColor.css';
 
 export const MarginSpaced = style({
   marginBottom: config.space.S200,
@@ -41,16 +42,19 @@ export const BlockQuote = style([
 ]);
 
 const BaseCode = style({
-  fontFamily: 'monospace',
-  color: color.Secondary.OnContainer,
-  background: color.Secondary.Container,
-  border: `${config.borderWidth.B300} solid ${color.Secondary.ContainerLine}`,
+  color: color.SurfaceVariant.OnContainer,
+  background: color.SurfaceVariant.Container,
+  border: `${config.borderWidth.B300} solid ${color.SurfaceVariant.ContainerLine}`,
   borderRadius: config.radii.R300,
+});
+const CodeFont = style({
+  fontFamily: 'monospace',
 });
 
 export const Code = style([
   DefaultReset,
   BaseCode,
+  CodeFont,
   {
     padding: `0 ${config.space.S100}`,
   },
@@ -85,10 +89,35 @@ export const CodeBlock = style([
   MarginSpaced,
   {
     fontStyle: 'normal',
+    position: 'relative',
+    overflow: 'hidden',
   },
 ]);
-export const CodeBlockInternal = style({
-  padding: `${config.space.S200} ${config.space.S200} 0`,
+export const CodeBlockHeader = style([
+  ContainerColor({ variant: 'Surface' }),
+  {
+    padding: `0 ${config.space.S200} 0 ${config.space.S300}`,
+    borderBottomWidth: config.borderWidth.B300,
+    gap: config.space.S200,
+  },
+]);
+export const CodeBlockInternal = style([
+  CodeFont,
+  {
+    padding: `${config.space.S200} ${config.space.S200} 0`,
+    minWidth: toRem(200),
+  },
+]);
+
+export const CodeBlockBottomShadow = style({
+  position: 'absolute',
+  bottom: 0,
+  left: 0,
+  right: 0,
+  pointerEvents: 'none',
+
+  height: config.space.S400,
+  background: `linear-gradient(to top, #00000022, #00000000)`,
 });
 
 export const List = style([

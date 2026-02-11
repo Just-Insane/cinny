@@ -108,21 +108,24 @@ import { ReplyLayout, ThreadIndicator } from '../../components/message';
 import { roomToParentsAtom } from '../../state/room/roomToParents';
 import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
 import { useImagePackRooms } from '../../hooks/useImagePackRooms';
-import { GetPowerLevelTag } from '../../hooks/usePowerLevelTags';
-import { powerLevelAPI, usePowerLevelsContext } from '../../hooks/usePowerLevels';
+import { usePowerLevelsContext } from '../../hooks/usePowerLevels';
 import colorMXID from '../../../util/colorMXID';
 import { useIsDirectRoom } from '../../hooks/useRoom';
+import { useAccessiblePowerTagColors, useGetMemberPowerTag } from '../../hooks/useMemberPowerTag';
+import { useRoomCreators } from '../../hooks/useRoomCreators';
+import { useTheme } from '../../hooks/useTheme';
+import { useRoomCreatorsTag } from '../../hooks/useRoomCreatorsTag';
+import { usePowerLevelTags } from '../../hooks/usePowerLevelTags';
+import { useComposingCheck } from '../../hooks/useComposingCheck';
 
 interface RoomInputProps {
   editor: Editor;
   fileDropContainerRef: RefObject<HTMLElement>;
   roomId: string;
   room: Room;
-  getPowerLevelTag: GetPowerLevelTag;
-  accessibleTagColors: Map<string, string>;
 }
 export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
-  ({ editor, fileDropContainerRef, roomId, room, getPowerLevelTag, accessibleTagColors }, ref) => {
+  ({ editor, fileDropContainerRef, roomId, room }, ref) => {
     const mx = useMatrixClient();
     const useAuthentication = useMediaAuthentication();
     const [enterForNewline] = useSetting(settingsAtom, 'enterForNewline');
@@ -134,13 +137,24 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
     const emojiBtnRef = useRef<HTMLButtonElement>(null);
     const roomToParents = useAtomValue(roomToParentsAtom);
     const powerLevels = usePowerLevelsContext();
+    const creators = useRoomCreators(room);
 
     const [msgDraft, setMsgDraft] = useAtom(roomIdToMsgDraftAtomFamily(roomId));
     const [replyDraft, setReplyDraft] = useAtom(roomIdToReplyDraftAtomFamily(roomId));
     const replyUserID = replyDraft?.userId;
 
-    const replyPowerTag = getPowerLevelTag(powerLevelAPI.getPowerLevel(powerLevels, replyUserID));
-    const replyPowerColor = replyPowerTag.color
+    const powerLevelTags = usePowerLevelTags(room, powerLevels);
+    const creatorsTag = useRoomCreatorsTag();
+    const getMemberPowerTag = useGetMemberPowerTag(room, creators, powerLevels);
+    const theme = useTheme();
+    const accessibleTagColors = useAccessiblePowerTagColors(
+      theme.kind,
+      creatorsTag,
+      powerLevelTags
+    );
+
+    const replyPowerTag = replyUserID ? getMemberPowerTag(replyUserID) : undefined;
+    const replyPowerColor = replyPowerTag?.color
       ? accessibleTagColors.get(replyPowerTag.color)
       : undefined;
     const replyUsernameColor =
@@ -203,6 +217,8 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
     const handlePaste = useFilePasteHandler(handleFiles);
     const dropZoneVisible = useFileDropZone(fileDropContainerRef, handleFiles);
     const [hideStickerBtn, setHideStickerBtn] = useState(document.body.clientWidth < 500);
+
+    const isComposing = useComposingCheck();
 
     useElementSizeObserver(
       useCallback(() => document.body, []),
@@ -277,7 +293,7 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
       });
       handleCancelUpload(uploads);
       const contents = fulfilledPromiseSettledResult(await Promise.allSettled(contentsPromises));
-      contents.forEach((content) => mx.sendMessage(roomId, content));
+      contents.forEach((content) => mx.sendMessage(roomId, content as any));
     };
 
     const submit = useCallback(() => {
@@ -356,7 +372,7 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
           content['m.relates_to'].is_falling_back = false;
         }
       }
-      mx.sendMessage(roomId, content);
+      mx.sendMessage(roomId, content as any);
       resetEditor(editor);
       resetEditorHistory(editor);
       setReplyDraft(undefined);
@@ -367,7 +383,7 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
       (evt) => {
         if (
           (isKeyHotkey('mod+enter', evt) || (!enterForNewline && isKeyHotkey('enter', evt))) &&
-          !evt.nativeEvent.isComposing
+          !isComposing(evt)
         ) {
           evt.preventDefault();
           submit();
@@ -381,7 +397,7 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
           setReplyDraft(undefined);
         }
       },
-      [submit, setReplyDraft, enterForNewline, autocompleteQuery]
+      [submit, setReplyDraft, enterForNewline, autocompleteQuery, isComposing]
     );
 
     const handleKeyUp: KeyboardEventHandler = useCallback(
@@ -543,7 +559,7 @@ export const RoomInput = forwardRef<HTMLDivElement, RoomInputProps>(
                   >
                     <Icon src={Icons.Cross} size="50" />
                   </IconButton>
-                  <Box direction="Column">
+                  <Box direction="Row" gap="200" alignItems="Center">
                     {replyDraft.relation?.rel_type === RelationType.Thread && <ThreadIndicator />}
                     <ReplyLayout
                       userColor={replyUsernameColor}

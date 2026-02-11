@@ -30,10 +30,12 @@ import { AsyncStatus, useAsyncCallback } from '../../hooks/useAsyncCallback';
 import * as css from './SpaceItem.css';
 import * as styleCss from './style.css';
 import { useDraggableItem } from './DnD';
-import { openCreateRoom, openSpaceAddExisting } from '../../../client/action/navigation';
 import { stopPropagation } from '../../utils/keyboard';
 import { mxcUrlToHttp } from '../../utils/matrix';
 import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
+import { useOpenCreateRoomModal } from '../../state/hooks/createRoomModal';
+import { useOpenCreateSpaceModal } from '../../state/hooks/createSpaceModal';
+import { AddExistingModal } from '../add-existing';
 
 function SpaceProfileLoading() {
   return (
@@ -240,18 +242,20 @@ function RootSpaceProfile({ closed, categoryId, handleClose }: RootSpaceProfileP
 
 function AddRoomButton({ item }: { item: HierarchyItem }) {
   const [cords, setCords] = useState<RectCords>();
+  const openCreateRoomModal = useOpenCreateRoomModal();
+  const [addExisting, setAddExisting] = useState(false);
 
   const handleAddRoom: MouseEventHandler<HTMLButtonElement> = (evt) => {
     setCords(evt.currentTarget.getBoundingClientRect());
   };
 
   const handleCreateRoom = () => {
-    openCreateRoom(false, item.roomId as any);
+    openCreateRoomModal(item.roomId);
     setCords(undefined);
   };
 
   const handleAddExisting = () => {
-    openSpaceAddExisting(item.roomId);
+    setAddExisting(true);
     setCords(undefined);
   };
 
@@ -297,24 +301,29 @@ function AddRoomButton({ item }: { item: HierarchyItem }) {
       >
         <Text size="B300">Add Room</Text>
       </Chip>
+      {addExisting && (
+        <AddExistingModal parentId={item.roomId} requestClose={() => setAddExisting(false)} />
+      )}
     </PopOut>
   );
 }
 
 function AddSpaceButton({ item }: { item: HierarchyItem }) {
   const [cords, setCords] = useState<RectCords>();
+  const openCreateSpaceModal = useOpenCreateSpaceModal();
+  const [addExisting, setAddExisting] = useState(false);
 
   const handleAddSpace: MouseEventHandler<HTMLButtonElement> = (evt) => {
     setCords(evt.currentTarget.getBoundingClientRect());
   };
 
   const handleCreateSpace = () => {
-    openCreateRoom(true, item.roomId as any);
+    openCreateSpaceModal(item.roomId as any);
     setCords(undefined);
   };
 
   const handleAddExisting = () => {
-    openSpaceAddExisting(item.roomId, true);
+    setAddExisting(true);
     setCords(undefined);
   };
   return (
@@ -359,6 +368,9 @@ function AddSpaceButton({ item }: { item: HierarchyItem }) {
       >
         <Text size="B300">Add Space</Text>
       </Chip>
+      {addExisting && (
+        <AddExistingModal space parentId={item.roomId} requestClose={() => setAddExisting(false)} />
+      )}
     </PopOut>
   );
 }
@@ -470,7 +482,7 @@ export const SpaceItemCard = as<'div', SpaceItemCardProps>(
               </>
             )}
           </Box>
-          {canEditChild && (
+          {space && canEditChild && (
             <Box shrink="No" alignItems="Inherit" gap="200">
               <AddRoomButton item={item} />
               {item.parentId === undefined && <AddSpaceButton item={item} />}

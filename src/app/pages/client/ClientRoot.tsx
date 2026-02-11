@@ -23,20 +23,18 @@ import {
   logoutClient,
   startClient,
 } from '../../../client/initMatrix';
-import { getSecret } from '../../../client/state/auth';
 import { SplashScreen } from '../../components/splash-screen';
-import { CapabilitiesAndMediaConfigLoader } from '../../components/CapabilitiesAndMediaConfigLoader';
+import { ServerConfigsLoader } from '../../components/ServerConfigsLoader';
 import { CapabilitiesProvider } from '../../hooks/useCapabilities';
 import { MediaConfigProvider } from '../../hooks/useMediaConfig';
 import { MatrixClientProvider } from '../../hooks/useMatrixClient';
 import { SpecVersions } from './SpecVersions';
-import Windows from '../../organisms/pw/Windows';
-import Dialogs from '../../organisms/pw/Dialogs';
-import ReusableContextMenu from '../../atoms/context-menu/ReusableContextMenu';
 import { AsyncStatus, useAsyncCallback } from '../../hooks/useAsyncCallback';
 import { useSyncState } from '../../hooks/useSyncState';
 import { stopPropagation } from '../../utils/keyboard';
 import { SyncStatus } from './SyncStatus';
+import { AuthMetadataProvider } from '../../hooks/useAuthMetadata';
+import { getFallbackSession } from '../../state/sessions';
 
 function ClientRootLoading() {
   return (
@@ -145,10 +143,16 @@ type ClientRootProps = {
 };
 export function ClientRoot({ children }: ClientRootProps) {
   const [loading, setLoading] = useState(true);
-  const { baseUrl } = getSecret();
+  const { baseUrl } = getFallbackSession() ?? {};
 
   const [loadState, loadMatrix] = useAsyncCallback<MatrixClient, Error, []>(
-    useCallback(() => initClient(getSecret() as any), [])
+    useCallback(() => {
+      const session = getFallbackSession();
+      if (!session) {
+        throw new Error('No session Found!');
+      }
+      return initClient(session);
+    }, [])
   );
   const mx = loadState.status === AsyncStatus.Success ? loadState.data : undefined;
   const [startState, startMatrix] = useAsyncCallback<void, Error, [MatrixClient]>(
@@ -207,18 +211,17 @@ export function ClientRoot({ children }: ClientRootProps) {
         <ClientRootLoading />
       ) : (
         <MatrixClientProvider value={mx}>
-          <CapabilitiesAndMediaConfigLoader>
-            {(capabilities, mediaConfig) => (
-              <CapabilitiesProvider value={capabilities ?? {}}>
-                <MediaConfigProvider value={mediaConfig ?? {}}>
-                  {children}
-                  <Windows />
-                  <Dialogs />
-                  <ReusableContextMenu />
+          <ServerConfigsLoader>
+            {(serverConfigs) => (
+              <CapabilitiesProvider value={serverConfigs.capabilities ?? {}}>
+                <MediaConfigProvider value={serverConfigs.mediaConfig ?? {}}>
+                  <AuthMetadataProvider value={serverConfigs.authMetadata}>
+                    {children}
+                  </AuthMetadataProvider>
                 </MediaConfigProvider>
               </CapabilitiesProvider>
             )}
-          </CapabilitiesAndMediaConfigLoader>
+          </ServerConfigsLoader>
         </MatrixClientProvider>
       )}
     </SpecVersions>

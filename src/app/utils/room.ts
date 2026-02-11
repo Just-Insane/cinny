@@ -5,6 +5,7 @@ import {
   EventTimelineSet,
   EventType,
   IMentions,
+  IPowerLevelsContent,
   IPushRule,
   IPushRules,
   JoinRule,
@@ -19,6 +20,7 @@ import {
 import { CryptoBackend } from 'matrix-js-sdk/lib/common-crypto/CryptoBackend';
 import { AccountDataEvent } from '../../types/matrix/accountData';
 import {
+  IRoomCreateContent,
   Membership,
   MessageEvent,
   NotificationType,
@@ -42,7 +44,7 @@ export const getStateEvents = (room: Room, eventType: StateEvent): MatrixEvent[]
 export const getAccountData = (
   mx: MatrixClient,
   eventType: AccountDataEvent
-): MatrixEvent | undefined => mx.getAccountData(eventType);
+): MatrixEvent | undefined => mx.getAccountData(eventType as any);
 
 export const getMDirects = (mDirectEvent: MatrixEvent): Set<string> => {
   const roomIds = new Set<string>();
@@ -294,9 +296,14 @@ export const getDirectRoomAvatarUrl = (
   useAuthentication = false
 ): string | undefined => {
   const mxcUrl = room.getAvatarFallbackMember()?.getMxcAvatarUrl();
-  return mxcUrl
-    ? mx.mxcUrlToHttp(mxcUrl, size, size, 'crop', undefined, false, useAuthentication) ?? undefined
-    : undefined;
+
+  if (!mxcUrl) {
+    return getRoomAvatarUrl(mx, room, size, useAuthentication);
+  }
+
+  return (
+    mx.mxcUrlToHttp(mxcUrl, size, size, 'crop', undefined, false, useAuthentication) ?? undefined
+  );
 };
 
 export const trimReplyFromBody = (body: string): string => {
@@ -474,3 +481,74 @@ export const bannedInRooms = (mx: MatrixClient, rooms: string[], otherUserId: st
     const banned = room.hasMembershipState(otherUserId, Membership.Ban);
     return banned;
   });
+
+export const getAllVersionsRoomCreator = (room: Room): Set<string> => {
+  const creators = new Set<string>();
+
+  const createEvent = getStateEvent(room, StateEvent.RoomCreate);
+  const createContent = createEvent?.getContent<IRoomCreateContent>();
+  const creator = createEvent?.getSender();
+  if (typeof creator === 'string') creators.add(creator);
+
+  if (createContent && Array.isArray(createContent.additional_creators)) {
+    createContent.additional_creators.forEach((c) => {
+      if (typeof c === 'string') creators.add(c);
+    });
+  }
+
+  return creators;
+};
+
+export const guessPerfectParent = (
+  mx: MatrixClient,
+  roomId: string,
+  parents: string[]
+): string | undefined => {
+  if (parents.length === 1) {
+    return parents[0];
+  }
+
+  const getSpecialUsers = (rId: string): string[] => {
+    const specialUsers: Set<string> = new Set();
+
+    const r = mx.getRoom(rId);
+    if (!r) return [];
+
+    getAllVersionsRoomCreator(r).forEach((c) => specialUsers.add(c));
+
+    const powerLevels = getStateEvent(
+      r,
+      StateEvent.RoomPowerLevels
+    )?.getContent<IPowerLevelsContent>();
+
+    const { users_default: usersDefault, users } = powerLevels ?? {};
+    const defaultPower = typeof usersDefault === 'number' ? usersDefault : 0;
+
+    if (typeof users === 'object')
+      Object.keys(users).forEach((userId) => {
+        if (users[userId] > defaultPower) {
+          specialUsers.add(userId);
+        }
+      });
+
+    return Array.from(specialUsers);
+  };
+
+  let perfectParent: string | undefined;
+  let score = 0;
+
+  const roomSpecialUsers = getSpecialUsers(roomId);
+  parents.forEach((parentId) => {
+    const parentSpecialUsers = getSpecialUsers(parentId);
+    const matchedUsersCount = parentSpecialUsers.filter((userId) =>
+      roomSpecialUsers.includes(userId)
+    ).length;
+
+    if (matchedUsersCount > score) {
+      score = matchedUsersCount;
+      perfectParent = parentId;
+    }
+  });
+
+  return perfectParent;
+};

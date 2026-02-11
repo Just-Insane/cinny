@@ -15,7 +15,6 @@ import {
   toRem,
 } from 'folds';
 import { MatrixError } from 'matrix-js-sdk';
-import { IPowerLevels, powerLevelAPI } from '../../../hooks/usePowerLevels';
 import { SettingTile } from '../../../components/setting-tile';
 import { SequenceCard } from '../../../components/sequence-card';
 import { SequenceCardStyle } from '../../room-settings/styles.css';
@@ -29,23 +28,23 @@ import {
 } from '../../../hooks/useRoomAliases';
 import { AsyncStatus, useAsyncCallback } from '../../../hooks/useAsyncCallback';
 import { CutoutCard } from '../../../components/cutout-card';
-import { getIdServer } from '../../../../util/matrixUtil';
 import { replaceSpaceWithDash } from '../../../utils/common';
 import { useAlive } from '../../../hooks/useAlive';
 import { StateEvent } from '../../../../types/matrix/room';
+import { RoomPermissionsAPI } from '../../../hooks/useRoomPermissions';
+import { getMxIdServer } from '../../../utils/matrix';
 
 type RoomPublishedAddressesProps = {
-  powerLevels: IPowerLevels;
+  permissions: RoomPermissionsAPI;
 };
 
-export function RoomPublishedAddresses({ powerLevels }: RoomPublishedAddressesProps) {
+export function RoomPublishedAddresses({ permissions }: RoomPublishedAddressesProps) {
   const mx = useMatrixClient();
   const room = useRoom();
-  const userPowerLevel = powerLevelAPI.getPowerLevel(powerLevels, mx.getSafeUserId());
-  const canEditCanonical = powerLevelAPI.canSendStateEvent(
-    powerLevels,
+
+  const canEditCanonical = permissions.stateEvent(
     StateEvent.RoomCanonicalAlias,
-    userPowerLevel
+    mx.getSafeUserId()
   );
 
   const [canonicalAlias, publishedAliases] = usePublishedAliases(room);
@@ -134,7 +133,7 @@ export function RoomPublishedAddresses({ powerLevels }: RoomPublishedAddressesPr
 function LocalAddressInput({ addLocalAlias }: { addLocalAlias: (alias: string) => Promise<void> }) {
   const mx = useMatrixClient();
   const userId = mx.getSafeUserId();
-  const server = getIdServer(userId);
+  const server = getMxIdServer(userId);
   const alive = useAlive();
 
   const [addState, addAlias] = useAsyncCallback(addLocalAlias);
@@ -330,7 +329,7 @@ function LocalAddressesList({
             <Box shrink="No">
               <Checkbox
                 checked={selected}
-                onChange={() => toggleSelect(alias)}
+                onClick={() => toggleSelect(alias)}
                 size="50"
                 variant="Primary"
                 disabled={loading}
@@ -360,14 +359,13 @@ function LocalAddressesList({
   );
 }
 
-export function RoomLocalAddresses({ powerLevels }: { powerLevels: IPowerLevels }) {
+export function RoomLocalAddresses({ permissions }: { permissions: RoomPermissionsAPI }) {
   const mx = useMatrixClient();
   const room = useRoom();
-  const userPowerLevel = powerLevelAPI.getPowerLevel(powerLevels, mx.getSafeUserId());
-  const canEditCanonical = powerLevelAPI.canSendStateEvent(
-    powerLevels,
+
+  const canEditCanonical = permissions.stateEvent(
     StateEvent.RoomCanonicalAlias,
-    userPowerLevel
+    mx.getSafeUserId()
   );
 
   const [expand, setExpand] = useState(false);

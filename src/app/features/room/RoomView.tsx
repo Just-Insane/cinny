@@ -5,7 +5,7 @@ import { ReactEditor } from 'slate-react';
 import { isKeyHotkey } from 'is-hotkey';
 import { useStateEvent } from '../../hooks/useStateEvent';
 import { StateEvent } from '../../../types/matrix/room';
-import { usePowerLevelsAPI, usePowerLevelsContext } from '../../hooks/usePowerLevels';
+import { usePowerLevelsContext } from '../../hooks/usePowerLevels';
 import { useMatrixClient } from '../../hooks/useMatrixClient';
 import { useEditor } from '../../components/editor';
 import { RoomInputPlaceholder } from './RoomInputPlaceholder';
@@ -17,21 +17,14 @@ import { RoomViewFollowing, RoomViewFollowingPlaceholder } from './RoomViewFollo
 import { Page } from '../../components/page';
 import { useKeyDown } from '../../hooks/useKeyDown';
 import { editableActiveElement } from '../../utils/dom';
-import navigation from '../../../client/state/navigation';
 import { settingsAtom } from '../../state/settings';
 import { useSetting } from '../../state/hooks/settings';
-import { useAccessibleTagColors, usePowerLevelTags } from '../../hooks/usePowerLevelTags';
-import { useTheme } from '../../hooks/useTheme';
+import { useRoomPermissions } from '../../hooks/useRoomPermissions';
+import { useRoomCreators } from '../../hooks/useRoomCreators';
 import { useCallState } from '../../pages/client/call/CallProvider';
 import { ScreenSize, useScreenSizeContext } from '../../hooks/useScreenSize';
 
 const FN_KEYS_REGEX = /^F\d+$/;
-
-/**
- * Determines if a keyboard event should trigger focusing the message input field.
- * @param evt - The KeyboardEvent.
- * @returns True if the input should be focused, false otherwise.
- */
 const shouldFocusMessageField = (evt: KeyboardEvent): boolean => {
   const { code } = evt;
   if (evt.metaKey || evt.altKey || evt.ctrlKey) {
@@ -58,42 +51,41 @@ const shouldFocusMessageField = (evt: KeyboardEvent): boolean => {
   ) {
     return false;
   }
+
   return true;
 };
 
 export function RoomView({ room, eventId }: { room: Room; eventId?: string }) {
   const roomInputRef = useRef<HTMLDivElement>(null);
   const roomViewRef = useRef<HTMLDivElement>(null);
+
   const [hideActivity] = useSetting(settingsAtom, 'hideActivity');
   const screenSize = useScreenSizeContext();
   const { isChatOpen } = useCallState();
+
   const { roomId } = room;
   const editor = useEditor();
+
   const mx = useMatrixClient();
+
   const tombstoneEvent = useStateEvent(room, StateEvent.RoomTombstone);
   const powerLevels = usePowerLevelsContext();
-  const { getPowerLevel, canSendEvent } = usePowerLevelsAPI(powerLevels);
-  const myUserId = mx.getUserId();
-  const canMessage = myUserId
-    ? canSendEvent(EventType.RoomMessage, getPowerLevel(myUserId))
-    : false;
-  const [powerLevelTags, getPowerLevelTag] = usePowerLevelTags(room, powerLevels);
-  const theme = useTheme();
-  const accessibleTagColors = useAccessibleTagColors(theme.kind, powerLevelTags);
+  const creators = useRoomCreators(room);
+
+  const permissions = useRoomPermissions(creators, powerLevels);
+  const canMessage = permissions.event(EventType.RoomMessage, mx.getSafeUserId());
 
   useKeyDown(
     window,
     useCallback(
       (evt) => {
         if (editableActiveElement()) return;
-        if (document.querySelector('.ReactModalPortal > *') || navigation.isRawModalVisible) {
+        const portalContainer = document.getElementById('portalContainer');
+        if (portalContainer && portalContainer.children.length > 0) {
           return;
         }
-
         if (shouldFocusMessageField(evt) || isKeyHotkey('mod+v', evt)) {
-          if (editor) {
-            ReactEditor.focus(editor);
-          }
+          ReactEditor.focus(editor);
         }
       },
       [editor]
@@ -117,14 +109,11 @@ export function RoomView({ room, eventId }: { room: Room; eventId?: string }) {
             eventId={eventId}
             roomInputRef={roomInputRef}
             editor={editor}
-            getPowerLevelTag={getPowerLevelTag}
-            accessibleTagColors={accessibleTagColors}
           />
           <RoomViewTyping room={room} />
         </Box>
         <Box shrink="No" direction="Column">
           <div style={{ padding: `0 ${config.space.S400}` }}>
-            {' '}
             {tombstoneEvent ? (
               <RoomTombstone
                 roomId={roomId}
@@ -132,19 +121,17 @@ export function RoomView({ room, eventId }: { room: Room; eventId?: string }) {
                 replacementRoomId={tombstoneEvent.getContent().replacement_room}
               />
             ) : (
-              /* eslint-disable-next-line react/jsx-no-useless-fragment */
               <>
-                {canMessage ? (
+                {canMessage && (
                   <RoomInput
                     room={room}
                     editor={editor}
                     roomId={roomId}
                     fileDropContainerRef={roomViewRef}
                     ref={roomInputRef}
-                    getPowerLevelTag={getPowerLevelTag}
-                    accessibleTagColors={accessibleTagColors}
                   />
-                ) : (
+                )}
+                {!canMessage && (
                   <RoomInputPlaceholder
                     style={{ padding: config.space.S200 }}
                     alignItems="Center"
