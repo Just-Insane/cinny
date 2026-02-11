@@ -1,4 +1,15 @@
-import { Box, Chip, Icon, IconButton, Icons, Text, Tooltip, TooltipProvider } from 'folds';
+import {
+  Box,
+  Chip,
+  Icon,
+  IconButton,
+  Icons,
+  Text,
+  Tooltip,
+  TooltipProvider,
+  color,
+  config,
+} from 'folds';
 import React from 'react';
 import { useMatrixClient } from '../../hooks/useMatrixClient';
 import { useCallState } from '../../pages/client/call/CallProvider';
@@ -9,17 +20,18 @@ export function CallNavStatus() {
     activeCallRoomId,
     isAudioEnabled,
     isVideoEnabled,
-    isActiveCallReady,
     toggleAudio,
     toggleVideo,
     hangUp,
   } = useCallState();
   const mx = useMatrixClient();
   const { navigateRoom } = useRoomNavigate();
-  if (!isActiveCallReady || !activeCallRoomId) return null;
+  const hasActiveCall = Boolean(activeCallRoomId);
 
   const handleGoToCallRoom = () => {
-    navigateRoom(activeCallRoomId);
+    if (activeCallRoomId) {
+      navigateRoom(activeCallRoomId);
+    }
   };
 
   return (
@@ -27,78 +39,47 @@ export function CallNavStatus() {
       direction="Column"
       style={{
         flexShrink: 0,
-        borderTop: `1px solid #e0e0e0`,
-        justifyContent: 'center',
+        borderTop: `${config.borderWidth.B300} solid ${color.Background.ContainerLine}`,
+        padding: `${config.space.S200} ${config.space.S200}`,
       }}
     >
-      <Box direction="Row" justifyContent="SpaceBetween" alignItems="Center">
-        {/* Going to need better icons for this */}
-
-        <Box>
-          <TooltipProvider
-            position="Top"
-            offset={4}
-            tooltip={
-              <Tooltip>
-                <Text>Go to Room</Text>
-              </Tooltip>
-            }
-          >
-            {(triggerRef) => (
-              <Chip
-                variant="Background"
-                size="500"
-                fill="Soft"
-                as="button"
-                onClick={handleGoToCallRoom}
-                ref={triggerRef}
-                style={{
-                  display: isActiveCallReady ? 'flex' : 'none',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Icon src={Icons.VolumeHigh} />
-                <Text style={{ flexGrow: 1 }} size="B400" truncate>
-                  {activeCallRoomId ? mx.getRoom(activeCallRoomId)?.name : ''}
-                </Text>
-              </Chip>
-            )}
-          </TooltipProvider>
+      <Box direction="Row" alignItems="Center" gap="100">
+        <Box grow="Yes" style={{ minWidth: 0 }}>
+          {hasActiveCall && (
+            <TooltipProvider
+              position="Top"
+              offset={4}
+              tooltip={
+                <Tooltip>
+                  <Text>Go to Room</Text>
+                </Tooltip>
+              }
+            >
+              {(triggerRef) => (
+                <Chip
+                  variant="Background"
+                  size="500"
+                  fill="Soft"
+                  as="button"
+                  onClick={handleGoToCallRoom}
+                  ref={triggerRef}
+                  style={{
+                    width: '100%',
+                    minWidth: 0,
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                  }}
+                >
+                  <Icon size="200" src={Icons.VolumeHigh} />
+                  <Text style={{ flexGrow: 1, minWidth: 0 }} size="B400" truncate>
+                    {mx.getRoom(activeCallRoomId)?.name ?? ''}
+                  </Text>
+                </Chip>
+              )}
+            </TooltipProvider>
+          )}
         </Box>
-
-        <Box>
-          <TooltipProvider
-            position="Top"
-            offset={4}
-            tooltip={
-              <Tooltip>
-                <Text>{!isAudioEnabled ? 'Unmute' : 'Mute'}</Text>
-              </Tooltip>
-            }
-          >
-            {(triggerRef) => (
-              <IconButton variant="Background" ref={triggerRef} onClick={toggleAudio}>
-                <Icon src={!isAudioEnabled ? Icons.MicMute : Icons.Mic} />
-              </IconButton>
-            )}
-          </TooltipProvider>
-          <TooltipProvider
-            position="Top"
-            offset={4}
-            tooltip={
-              <Tooltip>
-                <Text>{!isVideoEnabled ? 'Video On' : 'Video Off'}</Text>
-              </Tooltip>
-            }
-          >
-            {(triggerRef) => (
-              <IconButton variant="Background" ref={triggerRef} onClick={toggleVideo}>
-                <Icon src={!isVideoEnabled ? Icons.VideoCameraMute : Icons.VideoCamera} />
-              </IconButton>
-            )}
-          </TooltipProvider>
-
+        {hasActiveCall && (
           <TooltipProvider
             position="Top"
             offset={4}
@@ -111,17 +92,58 @@ export function CallNavStatus() {
             {(triggerRef) => (
               <IconButton
                 variant="Background"
+                size="400"
+                radii="400"
                 ref={triggerRef}
                 onClick={hangUp}
-                style={{
-                  display: isActiveCallReady ? 'block' : 'none',
-                }}
               >
                 <Icon src={Icons.Phone} />
               </IconButton>
             )}
           </TooltipProvider>
-        </Box>
+        )}
+        <TooltipProvider
+          position="Top"
+          offset={4}
+          tooltip={
+            <Tooltip>
+              <Text>{!isAudioEnabled ? 'Unmute' : 'Mute'}</Text>
+            </Tooltip>
+          }
+        >
+          {(triggerRef) => (
+            <IconButton
+              variant="Background"
+              size="400"
+              radii="400"
+              ref={triggerRef}
+              onClick={toggleAudio}
+            >
+              <Icon src={!isAudioEnabled ? Icons.MicMute : Icons.Mic} />
+            </IconButton>
+          )}
+        </TooltipProvider>
+        <TooltipProvider
+          position="Top"
+          offset={4}
+          tooltip={
+            <Tooltip>
+              <Text>{!isVideoEnabled ? 'Video On' : 'Video Off'}</Text>
+            </Tooltip>
+          }
+        >
+          {(triggerRef) => (
+            <IconButton
+              variant="Background"
+              size="400"
+              radii="400"
+              ref={triggerRef}
+              onClick={toggleVideo}
+            >
+              <Icon src={!isVideoEnabled ? Icons.VideoCameraMute : Icons.VideoCamera} />
+            </IconButton>
+          )}
+        </TooltipProvider>
       </Box>
     </Box>
   );
