@@ -1,5 +1,5 @@
 import React, { MouseEventHandler, forwardRef, useState, MouseEvent } from 'react';
-import { Room } from 'matrix-js-sdk';
+import { EventType, Room } from 'matrix-js-sdk';
 import {
   Avatar,
   Box,
@@ -21,7 +21,7 @@ import {
 } from 'folds';
 import { useFocusWithin, useHover } from 'react-aria';
 import FocusTrap from 'focus-trap-react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { NavButton, NavItem, NavItemContent, NavItemOptions } from '../../components/nav';
 import { UnreadBadge, UnreadBadgeCenter } from '../../components/unread-badge';
 import { RoomAvatar, RoomIcon } from '../../components/room-avatar';
@@ -59,6 +59,7 @@ import { useCallMembers } from '../../hooks/useCallMemberships';
 import { useRoomNavigate } from '../../hooks/useRoomNavigate';
 import { ScreenSize, useScreenSizeContext } from '../../hooks/useScreenSize';
 import { RoomNavUser } from './RoomNavUser';
+import { useRoomName } from '../../hooks/useRoomMeta';
 
 type RoomNavItemMenuProps = {
   room: Room;
@@ -241,6 +242,10 @@ export function RoomNavItem({
   const { focusWithinProps } = useFocusWithin({ onFocusWithinChange: setHover });
   const [menuAnchor, setMenuAnchor] = useState<RectCords>();
   const unread = useRoomUnread(room.roomId, roomToUnreadAtom);
+  const typingMember = useRoomTypingMember(room.roomId).filter(
+    (receipt) => receipt.userId !== mx.getUserId()
+  );
+
   const {
     isActiveCallReady,
     activeCallRoomId,
@@ -250,14 +255,20 @@ export function RoomNavItem({
     toggleChat,
     hangUp,
   } = useCallState();
-  const typingMember = useRoomTypingMember(room.roomId).filter(
-    (receipt) => receipt.userId !== mx.getUserId()
-  );
+
   const isActiveCall = isActiveCallReady && activeCallRoomId === room.roomId;
   const callMemberships = useCallMembers(mx, room.roomId);
+
+  const powerLevels = usePowerLevels(room);
+  const creators = useRoomCreators(room);
+  const roomName = useRoomName(room);
+
+  const permissions = useRoomPermissions(creators, powerLevels);
+  const canJoinCall = permissions.event(EventType.GroupCallMemberPrefix, mx.getSafeUserId());
+
   const { navigateRoom } = useRoomNavigate();
   const navigate = useNavigate();
-  const { roomIdOrAlias: viewedRoomId } = useParams();
+
   const screenSize = useScreenSizeContext();
   const isMobile = screenSize === ScreenSize.Mobile;
 
@@ -278,10 +289,7 @@ export function RoomNavItem({
   const handleNavItemClick: MouseEventHandler<HTMLElement> = (evt) => {
     if (room.isCallRoom()) {
       if (!isMobile) {
-        if (!isActiveCall) {
-          if (mx.getRoom(viewedRoomId)?.isCallRoom()) {
-            navigateRoom(room.roomId);
-          }
+        if (!isActiveCall && canJoinCall) {
           hangUp();
           setActiveCallRoomId(room.roomId);
         } else {
@@ -307,7 +315,7 @@ export function RoomNavItem({
 
   const optionsVisible = hover || !!menuAnchor;
   const ariaLabel = [
-    room.name,
+    roomName,
     room.isCallRoom()
       ? [
           'Call Room',
@@ -345,10 +353,10 @@ export function RoomNavItem({
                         ? getDirectRoomAvatarUrl(mx, room, 96, useAuthentication)
                         : getRoomAvatarUrl(mx, room, 96, useAuthentication)
                     }
-                    alt={room.name}
+                    alt={roomName}
                     renderFallback={() => (
                       <Text as="span" size="H6">
-                        {nameInitials(room.name)}
+                        {nameInitials(roomName)}
                       </Text>
                     )}
                   />
@@ -360,7 +368,8 @@ export function RoomNavItem({
                     filled={selected || isActiveCall}
                     size="100"
                     joinRule={room.getJoinRule()}
-                    call={room.isCallRoom()}
+                    roomType={room.getType()}
+                    locked={room.isCallRoom() && !canJoinCall}
                   />
                 )}
               </Avatar>
@@ -371,7 +380,7 @@ export function RoomNavItem({
                   size="Inherit"
                   truncate
                 >
-                  {room.name}
+                  {roomName}
                 </Text>
               </Box>
               {!optionsVisible && !unread && !selected && typingMember.length > 0 && (

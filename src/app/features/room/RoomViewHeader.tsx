@@ -23,7 +23,7 @@ import {
   Spinner,
 } from 'folds';
 import { useNavigate } from 'react-router-dom';
-import { JoinRule, Room } from 'matrix-js-sdk';
+import { Room } from 'matrix-js-sdk';
 
 import { useStateEvent } from '../../hooks/useStateEvent';
 import { PageHeader } from '../../components/page';
@@ -321,11 +321,7 @@ export function RoomViewHeader() {
                 src={avatarUrl}
                 alt={name}
                 renderFallback={() => (
-                  <RoomIcon
-                    size="200"
-                    joinRule={room.getJoinRule() ?? JoinRule.Restricted}
-                    filled
-                  />
+                  <RoomIcon size="200" joinRule={room.getJoinRule()} roomType={room.getType()} />
                 )}
               />
             </Avatar>

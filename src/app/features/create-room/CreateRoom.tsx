@@ -38,7 +38,8 @@ import {
   RoomVersionSelector,
   useAdditionalCreators,
 } from '../../components/create-room';
-import { RoomType } from '../../../types/matrix/room';
+import { RoomType, StateEvent } from '../../../types/matrix/room';
+import { IPowerLevels } from '../../hooks/usePowerLevels';
 
 const getCreateRoomKindToIcon = (kind: CreateRoomKind) => {
   if (kind === CreateRoomKind.Private) return Icons.HashLock;
@@ -118,9 +119,18 @@ export function CreateRoomForm({ defaultKind, space, onCreate }: CreateRoomFormP
       roomKnock = knock;
     }
 
+    let roomType;
+    const powerOverrides: IPowerLevels = {
+      events: {},
+    };
+    if (callRoom) {
+      roomType = RoomType.Call;
+      powerOverrides.events![StateEvent.GroupCallMemberPrefix] = 0;
+    }
+
     create({
       version: selectedRoomVersion,
-      type: callRoom ? RoomType.Call : undefined,
+      type: roomType,
       parent: space,
       kind,
       name: roomName,
@@ -130,6 +140,7 @@ export function CreateRoomForm({ defaultKind, space, onCreate }: CreateRoomFormP
       knock: roomKnock,
       allowFederation: federation,
       additionalCreators: allowAdditionalCreators ? additionalCreators : undefined,
+      powerLevelContentOverrides: powerOverrides,
     }).then((roomId) => {
       if (alive()) {
         onCreate?.(roomId);
@@ -183,12 +194,7 @@ export function CreateRoomForm({ defaultKind, space, onCreate }: CreateRoomFormP
           title="Call Room"
           description="Enable this to create a room optimized for voice calls."
           after={
-            <Switch
-              variant="Primary"
-              value={callRoom}
-              onChange={setCallRoom}
-              disabled={disabled}
-            />
+            <Switch variant="Primary" value={callRoom} onChange={setCallRoom} disabled={disabled} />
           }
         />
       </SequenceCard>

@@ -50,16 +50,8 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
       themeKind: ThemeKind | null
     ) => {
       if (mx?.getUserId()) {
-        if (
-          (activeCallRoomId !== viewedCallRoomId && isActiveCallReady) ||
-          (activeCallRoomId && !isActiveCallReady) ||
-          (!activeCallRoomId && viewedCallRoomId && !isActiveCallReady)
-        ) {
-          const roomIdToSet = (skipLobby ? activeCallRoomId : viewedCallRoomId) ?? '';
-
-          if (roomIdToSet === '') {
-            return;
-          }
+        if (activeCallRoomId && !isActiveCallReady) {
+          const roomIdToSet = activeCallRoomId;
 
           const widgetId = `element-call-${roomIdToSet}-${Date.now()}`;
           const newUrl = getWidgetUrl(
@@ -125,7 +117,6 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
     [
       mx,
       activeCallRoomId,
-      viewedCallRoomId,
       isActiveCallReady,
       clientConfig.elementCallUrl,
       activeClientWidget,

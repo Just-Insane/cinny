@@ -52,13 +52,6 @@ export const usePermissionGroups = (): PermissionGroup[] => {
         {
           location: {
             state: true,
-            key: StateEvent.GroupCallPrefix,
-          },
-          name: 'Start Call',
-        },
-        {
-          location: {
-            state: true,
             key: StateEvent.GroupCallMemberPrefix,
           },
           name: 'Join Call',
