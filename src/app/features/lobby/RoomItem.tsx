@@ -30,7 +30,7 @@ import { LocalRoomSummaryLoader } from '../../components/RoomSummaryLoader';
 import { UseStateProvider } from '../../components/UseStateProvider';
 import { RoomTopicViewer } from '../../components/room-topic-viewer';
 import { onEnterOrSpace, stopPropagation } from '../../utils/keyboard';
-import { Membership, RoomType } from '../../../types/matrix/room';
+import { Membership } from '../../../types/matrix/room';
 import * as css from './RoomItem.css';
 import * as styleCss from './style.css';
 import { AsyncStatus, useAsyncCallback } from '../../hooks/useAsyncCallback';

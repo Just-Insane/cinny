@@ -1,17 +1,34 @@
-import { Box, Chip, Icon, IconButton, Icons, Line, Text, Tooltip, TooltipProvider } from 'folds';
+import {
+  Box,
+  Chip,
+  Icon,
+  IconButton,
+  Icons,
+  Line,
+  Spinner,
+  Text,
+  Tooltip,
+  TooltipProvider,
+  color,
+} from 'folds';
 import React from 'react';
-import { useMatrixClient } from '../../hooks/useMatrixClient';
 import { useCallState } from '../../pages/client/call/CallProvider';
 import { useRoomNavigate } from '../../hooks/useRoomNavigate';
 import * as css from './RoomCallNavStatus.css';
 
 export function CallNavStatus() {
-  const { activeCallRoomId, isAudioEnabled, isVideoEnabled, toggleAudio, toggleVideo, hangUp } =
-    useCallState();
-  const mx = useMatrixClient();
+  const {
+    activeCallRoomId,
+    isActiveCallReady,
+    isAudioEnabled,
+    isVideoEnabled,
+    toggleAudio,
+    toggleVideo,
+    hangUp,
+  } = useCallState();
   const { navigateRoom } = useRoomNavigate();
   const hasActiveCall = Boolean(activeCallRoomId);
-
+  const isConnected = hasActiveCall && isActiveCallReady;
   const handleGoToCallRoom = () => {
     if (activeCallRoomId) {
       navigateRoom(activeCallRoomId);
@@ -42,9 +59,17 @@ export function CallNavStatus() {
                   ref={triggerRef}
                   className={css.RoomButton}
                 >
-                  <Icon size="300" src={Icons.VolumeHigh} />
-                  <Text className={css.RoomName} size="B400" truncate>
-                    {mx.getRoom(activeCallRoomId ?? '')?.name ?? ''}
+                  {isConnected ? (
+                    <Icon size="300" src={Icons.VolumeHigh} style={{ color: color.Success.Main }} />
+                  ) : (
+                    <Spinner size="300" variant="Secondary" />
+                  )}
+                  <Text
+                    as="span"
+                    size="L400"
+                    style={{ color: isConnected ? color.Success.Main : color.Warning.Main }}
+                  >
+                    {isConnected ? 'Connected' : 'Connecting'}
                   </Text>
                 </Chip>
               )}
