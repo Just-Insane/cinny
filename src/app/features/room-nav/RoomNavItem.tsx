@@ -302,7 +302,7 @@ export function RoomNavItem({
         navigateRoom(room.roomId);
       }
     } else {
-      navigateRoom(room.roomId);
+      navigate(linkPath);
     }
   };
 
