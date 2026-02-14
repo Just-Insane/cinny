@@ -28,7 +28,8 @@ type CreateRoomModalProps = {
   state: CreateRoomModalState;
 };
 function CreateRoomModal({ state }: CreateRoomModalProps) {
-  const { spaceId } = state;
+  const { spaceId, voice } = state;
+  console.log({ voice });
   const closeDialog = useCloseCreateRoomModal();
 
   const allJoinedRooms = useAllJoinedRoomsSet();
@@ -74,7 +75,7 @@ function CreateRoomModal({ state }: CreateRoomModalProps) {
                     direction="Column"
                     gap="500"
                   >
-                    <CreateRoomForm space={space} onCreate={closeDialog} />
+                    <CreateRoomForm space={space} onCreate={closeDialog} defaultVoice={voice} />
                   </Box>
                 </Scroll>
               </Box>
