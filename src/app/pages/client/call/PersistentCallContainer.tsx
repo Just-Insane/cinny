@@ -47,7 +47,7 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
       smallWidgetRef: React.MutableRefObject<SmallWidget | null>,
       iframeRef: React.MutableRefObject<HTMLIFrameElement | null>,
       skipLobby: boolean,
-      themeKind: ThemeKind | null
+      themeKind: ThemeKind | null,
     ) => {
       if (mx?.getUserId()) {
         if (activeCallRoomId && !isActiveCallReady) {
@@ -64,7 +64,8 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
               returnToLobby: 'true',
               perParticipantE2EE: 'true',
               theme: themeKind,
-            }
+              callIntent: 'audio',
+            },
           );
 
           if (
@@ -96,8 +97,8 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
             'm.call',
             newUrl,
             true,
-            getWidgetData(mx, roomIdToSet, {}, { skipLobby: true }),
-            roomIdToSet
+            getWidgetData(mx, roomIdToSet, {}, { skipLobby: true, callIntent: 'audio' }),
+            roomIdToSet,
           );
 
           const smallWidget = new SmallWidget(app);
@@ -109,7 +110,7 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
             roomIdToSet,
             widgetApiRef.current,
             smallWidget,
-            iframeElement
+            iframeElement,
           );
         }
       }
@@ -121,7 +122,7 @@ export function PersistentCallContainer({ children }: PersistentCallContainerPro
       clientConfig.elementCallUrl,
       activeClientWidget,
       registerActiveClientWidgetApi,
-    ]
+    ],
   );
 
   useEffect(() => {
