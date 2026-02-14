@@ -45,10 +45,12 @@ import {
   CreateRoomVoiceSelector,
 } from '../../components/create-room/CreateRoomVoiceSelector';
 
-const getCreateRoomKindToIcon = (kind: CreateRoomKind) => {
-  if (kind === CreateRoomKind.Private) return Icons.HashLock;
-  if (kind === CreateRoomKind.Restricted) return Icons.Hash;
-  return Icons.HashGlobe;
+const getCreateRoomKindToIcon = (kind: CreateRoomKind, voice?: CreateRoomVoice) => {
+  const isVoiceRoom = voice === CreateRoomVoice.VoiceRoom;
+  // TODO: Add VoiceLock and VoiceGlobe icons
+  if (kind === CreateRoomKind.Private) return isVoiceRoom ? Icons.Lock : Icons.HashLock;
+  if (kind === CreateRoomKind.Restricted) return isVoiceRoom ? Icons.VolumeHigh : Icons.Hash;
+  return isVoiceRoom ? Icons.VolumeHigh : Icons.HashGlobe;
 };
 
 const getCreateRoomVoiceToIcon = (kind: CreateRoomVoice) => {
@@ -165,15 +167,17 @@ export function CreateRoomForm({
 
   return (
     <Box as="form" onSubmit={handleSubmit} grow="Yes" direction="Column" gap="500">
-      <Box direction="Column" gap="100">
-        <Text size="L400">Type</Text>
-        <CreateRoomVoiceSelector
-          value={voice}
-          onSelect={setVoice}
-          disabled={disabled}
-          getIcon={getCreateRoomVoiceToIcon}
-        />
-      </Box>
+      {!space && (
+        <Box direction="Column" gap="100">
+          <Text size="L400">Type</Text>
+          <CreateRoomVoiceSelector
+            value={voice}
+            onSelect={setVoice}
+            disabled={disabled}
+            getIcon={getCreateRoomVoiceToIcon}
+          />
+        </Box>
+      )}
       <Box direction="Column" gap="100">
         <Text size="L400">Access</Text>
         <CreateRoomKindSelector
@@ -181,14 +185,14 @@ export function CreateRoomForm({
           onSelect={setKind}
           canRestrict={allowRestricted}
           disabled={disabled}
-          getIcon={getCreateRoomKindToIcon}
+          getIcon={(roomKind) => getCreateRoomKindToIcon(roomKind, voice)}
         />
       </Box>
       <Box shrink="No" direction="Column" gap="100">
         <Text size="L400">Name</Text>
         <Input
           required
-          before={<Icon size="100" src={getCreateRoomKindToIcon(kind)} />}
+          before={<Icon size="100" src={getCreateRoomKindToIcon(kind, voice)} />}
           name="nameInput"
           autoFocus
           size="500"
