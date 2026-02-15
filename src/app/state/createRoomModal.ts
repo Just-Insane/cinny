@@ -1,5 +1,5 @@
 import { atom } from 'jotai';
-import { CreateRoomVoice } from '../components/create-room/CreateRoomVoiceSelector';
+import { CreateRoomVoice } from '../components/create-room/types';
 
 export type CreateRoomModalState = {
   spaceId?: string;

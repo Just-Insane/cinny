@@ -1,5 +1,5 @@
 import React, { FormEventHandler, useCallback, useEffect, useState } from 'react';
-import { MatrixError, Room } from 'matrix-js-sdk';
+import { MatrixError, Room, JoinRule } from 'matrix-js-sdk';
 import {
   Box,
   Button,
@@ -37,20 +37,21 @@ import {
   CreateRoomKindSelector,
   RoomVersionSelector,
   useAdditionalCreators,
+  CreateRoomVoice,
 } from '../../components/create-room';
 import { RoomType, StateEvent } from '../../../types/matrix/room';
 import { IPowerLevels } from '../../hooks/usePowerLevels';
-import {
-  CreateRoomVoice,
-  CreateRoomVoiceSelector,
-} from '../../components/create-room/CreateRoomVoiceSelector';
+import { CreateRoomVoiceSelector } from '../../components/create-room/CreateRoomVoiceSelector';
+import { getRoomIconSrc } from '../../utils/room';
 
 const getCreateRoomKindToIcon = (kind: CreateRoomKind, voice?: CreateRoomVoice) => {
   const isVoiceRoom = voice === CreateRoomVoice.VoiceRoom;
-  // TODO: Add VoiceLock and VoiceGlobe icons
-  if (kind === CreateRoomKind.Private) return isVoiceRoom ? Icons.Lock : Icons.HashLock;
-  if (kind === CreateRoomKind.Restricted) return isVoiceRoom ? Icons.VolumeHigh : Icons.Hash;
-  return isVoiceRoom ? Icons.VolumeHigh : Icons.HashGlobe;
+
+  let joinRule: JoinRule = JoinRule.Public;
+  if (kind === CreateRoomKind.Restricted) joinRule = JoinRule.Restricted;
+  if (kind === CreateRoomKind.Private) joinRule = JoinRule.Knock;
+
+  return getRoomIconSrc(Icons, isVoiceRoom ? RoomType.Call : undefined, joinRule);
 };
 
 const getCreateRoomVoiceToIcon = (kind: CreateRoomVoice) => {

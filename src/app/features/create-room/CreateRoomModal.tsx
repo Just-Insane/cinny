@@ -23,14 +23,13 @@ import {
 } from '../../state/hooks/createRoomModal';
 import { CreateRoomModalState } from '../../state/createRoomModal';
 import { stopPropagation } from '../../utils/keyboard';
-import { CreateRoomVoice } from '../../components/create-room/CreateRoomVoiceSelector';
+import { CreateRoomVoice } from '../../components/create-room/types';
 
 type CreateRoomModalProps = {
   state: CreateRoomModalState;
 };
 function CreateRoomModal({ state }: CreateRoomModalProps) {
   const { spaceId, voice } = state;
-  console.log({ voice });
   const closeDialog = useCloseCreateRoomModal();
 
   const allJoinedRooms = useAllJoinedRoomsSet();

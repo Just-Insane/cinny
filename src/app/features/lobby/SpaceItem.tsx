@@ -36,7 +36,7 @@ import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
 import { useOpenCreateRoomModal } from '../../state/hooks/createRoomModal';
 import { useOpenCreateSpaceModal } from '../../state/hooks/createSpaceModal';
 import { AddExistingModal } from '../add-existing';
-import { CreateRoomVoice } from '../../components/create-room/CreateRoomVoiceSelector';
+import { CreateRoomVoice } from '../../components/create-room/types';
 
 function SpaceProfileLoading() {
   return (
