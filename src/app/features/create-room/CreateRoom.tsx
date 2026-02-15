@@ -1,5 +1,5 @@
 import React, { FormEventHandler, useCallback, useEffect, useState } from 'react';
-import { MatrixError, Room } from 'matrix-js-sdk';
+import { MatrixError, Room, JoinRule } from 'matrix-js-sdk';
 import {
   Box,
   Button,
@@ -37,22 +37,40 @@ import {
   CreateRoomKindSelector,
   RoomVersionSelector,
   useAdditionalCreators,
+  CreateRoomVoice,
 } from '../../components/create-room';
 import { RoomType, StateEvent } from '../../../types/matrix/room';
 import { IPowerLevels } from '../../hooks/usePowerLevels';
+import { CreateRoomVoiceSelector } from '../../components/create-room/CreateRoomVoiceSelector';
+import { getRoomIconSrc } from '../../utils/room';
 
-const getCreateRoomKindToIcon = (kind: CreateRoomKind) => {
-  if (kind === CreateRoomKind.Private) return Icons.HashLock;
-  if (kind === CreateRoomKind.Restricted) return Icons.Hash;
-  return Icons.HashGlobe;
+const getCreateRoomKindToIcon = (kind: CreateRoomKind, voice?: CreateRoomVoice) => {
+  const isVoiceRoom = voice === CreateRoomVoice.VoiceRoom;
+
+  let joinRule: JoinRule = JoinRule.Public;
+  if (kind === CreateRoomKind.Restricted) joinRule = JoinRule.Restricted;
+  if (kind === CreateRoomKind.Private) joinRule = JoinRule.Knock;
+
+  return getRoomIconSrc(Icons, isVoiceRoom ? RoomType.Call : undefined, joinRule);
+};
+
+const getCreateRoomVoiceToIcon = (kind: CreateRoomVoice) => {
+  if (kind === CreateRoomVoice.VoiceRoom) return Icons.VolumeHigh;
+  return Icons.Hash;
 };
 
 type CreateRoomFormProps = {
   defaultKind?: CreateRoomKind;
+  defaultVoice?: CreateRoomVoice;
   space?: Room;
   onCreate?: (roomId: string) => void;
 };
-export function CreateRoomForm({ defaultKind, space, onCreate }: CreateRoomFormProps) {
+export function CreateRoomForm({
+  defaultKind,
+  defaultVoice,
+  space,
+  onCreate,
+}: CreateRoomFormProps) {
   const mx = useMatrixClient();
   const alive = useAlive();
 
@@ -66,6 +84,7 @@ export function CreateRoomForm({ defaultKind, space, onCreate }: CreateRoomFormP
 
   const allowRestricted = space && restrictedSupported(selectedRoomVersion);
 
+  const [voice, setVoice] = useState(defaultVoice ?? CreateRoomVoice.TextRoom);
   const [kind, setKind] = useState(
     defaultKind ?? allowRestricted ? CreateRoomKind.Restricted : CreateRoomKind.Private
   );
@@ -74,7 +93,6 @@ export function CreateRoomForm({ defaultKind, space, onCreate }: CreateRoomFormP
     useAdditionalCreators();
   const [federation, setFederation] = useState(true);
   const [encryption, setEncryption] = useState(false);
-  const [callRoom, setCallRoom] = useState(false);
   const [knock, setKnock] = useState(false);
   const [advance, setAdvance] = useState(false);
 
@@ -123,7 +141,7 @@ export function CreateRoomForm({ defaultKind, space, onCreate }: CreateRoomFormP
     const powerOverrides: IPowerLevels = {
       events: {},
     };
-    if (callRoom) {
+    if (voice === CreateRoomVoice.VoiceRoom) {
       roomType = RoomType.Call;
       powerOverrides.events![StateEvent.GroupCallMemberPrefix] = 0;
     }
@@ -150,6 +168,17 @@ export function CreateRoomForm({ defaultKind, space, onCreate }: CreateRoomFormP
 
   return (
     <Box as="form" onSubmit={handleSubmit} grow="Yes" direction="Column" gap="500">
+      {!space && (
+        <Box direction="Column" gap="100">
+          <Text size="L400">Type</Text>
+          <CreateRoomVoiceSelector
+            value={voice}
+            onSelect={setVoice}
+            disabled={disabled}
+            getIcon={getCreateRoomVoiceToIcon}
+          />
+        </Box>
+      )}
       <Box direction="Column" gap="100">
         <Text size="L400">Access</Text>
         <CreateRoomKindSelector
@@ -157,14 +186,14 @@ export function CreateRoomForm({ defaultKind, space, onCreate }: CreateRoomFormP
           onSelect={setKind}
           canRestrict={allowRestricted}
           disabled={disabled}
-          getIcon={getCreateRoomKindToIcon}
+          getIcon={(roomKind) => getCreateRoomKindToIcon(roomKind, voice)}
         />
       </Box>
       <Box shrink="No" direction="Column" gap="100">
         <Text size="L400">Name</Text>
         <Input
           required
-          before={<Icon size="100" src={getCreateRoomKindToIcon(kind)} />}
+          before={<Icon size="100" src={getCreateRoomKindToIcon(kind, voice)} />}
           name="nameInput"
           autoFocus
           size="500"
@@ -184,20 +213,6 @@ export function CreateRoomForm({ defaultKind, space, onCreate }: CreateRoomFormP
           disabled={disabled}
         />
       </Box>
-      <SequenceCard
-        style={{ padding: config.space.S300 }}
-        variant="SurfaceVariant"
-        direction="Column"
-        gap="500"
-      >
-        <SettingTile
-          title="Call Room"
-          description="Enable this to create a room optimized for voice calls."
-          after={
-            <Switch variant="Primary" value={callRoom} onChange={setCallRoom} disabled={disabled} />
-          }
-        />
-      </SequenceCard>
 
       {kind === CreateRoomKind.Public && <CreateRoomAliasInput disabled={disabled} />}
 

@@ -7,11 +7,11 @@ import {
   Room,
 } from 'matrix-js-sdk';
 import { RoomJoinRulesEventContent } from 'matrix-js-sdk/lib/types';
-import { CreateRoomKind } from './CreateRoomKindSelector';
 import { RoomType, StateEvent } from '../../../types/matrix/room';
 import { getViaServers } from '../../plugins/via-servers';
 import { getMxIdServer } from '../../utils/matrix';
 import { IPowerLevels } from '../../hooks/usePowerLevels';
+import { CreateRoomKind } from './types';
 
 export const createRoomCreationContent = (
   type: RoomType | undefined,
