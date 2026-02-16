@@ -2,6 +2,8 @@ import { createClient, MatrixClient, IndexedDBStore, IndexedDBCryptoStore } from
 import { cryptoCallbacks } from './state/secretStorageKeys';
 import { clearNavToActivePathStore } from '../app/state/navToActivePath';
 import { Session, getSessionStoreName } from '../app/state/sessions';
+import { SlidingSyncController } from '../client/SlidingSyncController';
+
 
 export const initClient = async (session: Session): Promise<MatrixClient> => {
   const storeName = getSessionStoreName(session);
@@ -12,7 +14,7 @@ export const initClient = async (session: Session): Promise<MatrixClient> => {
     dbName: storeName.sync,
   });
 
-  const cryptoStore = new IndexedDBCryptoStore(global.indexedDB, storeName.crypto); // 4. USE THE DYNAMIC NAME
+  const cryptoStore = new IndexedDBCryptoStore(global.indexedDB, storeName.crypto);
 
   const mx = createClient({
     baseUrl: session.baseUrl,
@@ -35,9 +37,23 @@ export const initClient = async (session: Session): Promise<MatrixClient> => {
 };
 
 export const startClient = async (mx: MatrixClient) => {
-  await mx.startClient({
-    lazyLoadMembers: true,
-  });
+    const syncController = SlidingSyncController.getInstance();
+
+    await syncController.verifyServerSupport(mx);
+
+    if (SlidingSyncController.isSupportedOnServer) {
+        const slidingSync = await syncController.initialize(mx);
+
+        await mx.startClient({
+            slidingSync: slidingSync,
+            lazyLoadMembers: true,
+        });
+    } else {
+        await mx.startClient({
+            initialSyncLimit: 20,
+            lazyLoadMembers: true,
+        });
+    }
 };
 
 export const clearCacheAndReload = async (mx: MatrixClient) => {
@@ -72,3 +88,5 @@ export const clearLoginData = async () => {
   window.localStorage.clear();
   window.location.reload();
 };
+
+
