@@ -268,7 +268,7 @@ export function RoomViewHeader() {
   const { isChatOpen, toggleChat } = useCallState();
   const pinnedEvents = useRoomPinnedEvents(room);
   const encryptionEvent = useStateEvent(room, StateEvent.RoomEncryption);
-  const ecryptedRoom = !!encryptionEvent;
+  const encryptedRoom = !!encryptionEvent;
   const avatarMxc = useRoomAvatar(room, direct);
   const name = useRoomName(room);
   const topic = useRoomTopic(room);
@@ -373,7 +373,7 @@ export function RoomViewHeader() {
         <Box shrink="No">
           {(!room.isCallRoom() || isChatOpen) && (
             <>
-              {!ecryptedRoom && (
+              {!encryptedRoom && (
                 <TooltipProvider
                   position="Bottom"
                   offset={4}
