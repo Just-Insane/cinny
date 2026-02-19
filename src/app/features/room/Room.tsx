@@ -54,7 +54,7 @@ export function Room() {
             {(!room.isCallRoom() || isChatOpen) && <RoomView room={room} eventId={eventId} />}
           </Box>
         </Box>
-        {!room.isCallRoom() && screenSize === ScreenSize.Desktop && isDrawer && (
+        {screenSize === ScreenSize.Desktop && isDrawer && (
           <>
             <Line variant="Background" direction="Vertical" size="300" />
             <MembersDrawer key={room.roomId} room={room} members={members} />
