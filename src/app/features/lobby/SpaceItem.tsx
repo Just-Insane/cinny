@@ -36,7 +36,7 @@ import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
 import { useOpenCreateRoomModal } from '../../state/hooks/createRoomModal';
 import { useOpenCreateSpaceModal } from '../../state/hooks/createSpaceModal';
 import { AddExistingModal } from '../add-existing';
-import { CreateRoomVoice } from '../../components/create-room/types';
+import { CreateRoomType } from '../../components/create-room/types';
 
 function SpaceProfileLoading() {
   return (
@@ -250,8 +250,8 @@ function AddRoomButton({ item }: { item: HierarchyItem }) {
     setCords(evt.currentTarget.getBoundingClientRect());
   };
 
-  const handleCreateRoom = (voice?: CreateRoomVoice) => {
-    openCreateRoomModal(item.roomId, voice);
+  const handleCreateRoom = (type?: CreateRoomType) => {
+    openCreateRoomModal(item.roomId, type);
     setCords(undefined);
   };
 
@@ -282,7 +282,7 @@ function AddRoomButton({ item }: { item: HierarchyItem }) {
               radii="300"
               variant="Primary"
               fill="None"
-              onClick={() => handleCreateRoom(CreateRoomVoice.TextRoom)}
+              onClick={() => handleCreateRoom(CreateRoomType.TextRoom)}
             >
               <Text size="T300">New Room</Text>
             </MenuItem>
@@ -291,7 +291,7 @@ function AddRoomButton({ item }: { item: HierarchyItem }) {
               radii="300"
               variant="Primary"
               fill="None"
-              onClick={() => handleCreateRoom(CreateRoomVoice.VoiceRoom)}
+              onClick={() => handleCreateRoom(CreateRoomType.VoiceRoom)}
             >
               <Text size="T300">New Voice Room</Text>
             </MenuItem>
