@@ -128,6 +128,7 @@ export class SmallWidget extends EventEmitter {
     );
     this.iframe = iframe;
     this.messaging = new ClientWidgetApi(this.mockWidget, iframe, driver);
+    this.messaging.setViewedRoomId(this.roomId ?? null);
 
     // Emit events during the widget lifecycle
     this.messaging.on('preparing', () => this.emit('preparing'));
@@ -317,7 +318,7 @@ export class SmallWidget extends EventEmitter {
         this.eventsToFeed.add(ev);
       } else {
         const raw = ev.getEffectiveEvent();
-        this.messaging.feedEvent(raw as IRoomEvent, this.roomId ?? '').catch(() => null);
+        this.messaging.feedEvent(raw as IRoomEvent).catch(() => null);
       }
     }
   }
