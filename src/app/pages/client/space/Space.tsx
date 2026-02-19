@@ -298,7 +298,7 @@ function SpaceHeader() {
                 escapeDeactivates: stopPropagation,
               }}
             >
-              {space && <SpaceMenu room={space} requestClose={() => setMenuAnchor(undefined)} />}
+              <SpaceMenu room={space} requestClose={() => setMenuAnchor(undefined)} />
             </FocusTrap>
           }
         />
