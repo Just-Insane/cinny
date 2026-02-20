@@ -309,27 +309,6 @@ export class SmallWidgetDriver extends WidgetDriver {
   }
 
   /**
-   * @experimental Part of MSC4140 & MSC4157
-   */
-  public async cancelScheduledDelayedEvent(delayId: string): Promise<void> {
-    await this.updateDelayedEvent(delayId, UpdateDelayedEventAction.Cancel);
-  }
-
-  /**
-   * @experimental Part of MSC4140 & MSC4157
-   */
-  public async restartScheduledDelayedEvent(delayId: string): Promise<void> {
-    await this.updateDelayedEvent(delayId, UpdateDelayedEventAction.Restart);
-  }
-
-  /**
-   * @experimental Part of MSC4140 & MSC4157
-   */
-  public async sendScheduledDelayedEvent(delayId: string): Promise<void> {
-    await this.updateDelayedEvent(delayId, UpdateDelayedEventAction.Send);
-  }
-
-  /**
    * Implements {@link WidgetDriver#sendToDevice}
    */
   public async sendToDevice(
