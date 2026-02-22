@@ -217,19 +217,30 @@ export const roomHaveUnread = (mx: MatrixClient, room: Room) => {
   const userId = mx.getUserId();
   if (!userId) return false;
   const readUpToId = room.getEventReadUpTo(userId);
+  const fullyReadId = room.getAccountData(EventType.FullyRead)?.getContent()?.event_id as
+    | string
+    | undefined;
+  const readMarkerId = readUpToId ?? fullyReadId ?? null;
   const liveEvents = room.getLiveTimeline().getEvents();
 
   if (liveEvents[liveEvents.length - 1]?.getSender() === userId) {
     return false;
   }
 
-  for (let i = liveEvents.length - 1; i >= 0; i -= 1) {
+  if (!readMarkerId) return false;
+
+  const readIndex = liveEvents.findIndex((event) => event.getId() === readMarkerId);
+  if (readIndex === -1) {
+    // If the read marker doesn't point to a loaded event, fall back to server counts.
+    return roomHaveNotification(room);
+  }
+
+  for (let i = liveEvents.length - 1; i > readIndex; i -= 1) {
     const event = liveEvents[i];
     if (!event) return false;
-    if (event.getId() === readUpToId) return false;
     if (isNotificationEvent(event)) return true;
   }
-  return true;
+  return false;
 };
 
 export const getUnreadInfo = (room: Room): UnreadInfo => {
@@ -260,19 +271,20 @@ export const getUnreadInfos = (mx: MatrixClient): UnreadInfo[] => {
 export const joinRuleToIconSrc = (
   icons: Record<IconName, IconSrc>,
   joinRule: JoinRule,
-  space: boolean
+  space: boolean,
+  call = false
 ): IconSrc | undefined => {
   if (joinRule === JoinRule.Restricted) {
-    return space ? icons.Space : icons.Hash;
+    return space ? icons.Space : call ? icons.VolumeHigh : icons.Hash;
   }
   if (joinRule === JoinRule.Knock) {
-    return space ? icons.SpaceLock : icons.HashLock;
+    return space ? icons.SpaceLock : call ? icons.VolumeHigh : icons.HashLock;
   }
   if (joinRule === JoinRule.Invite) {
-    return space ? icons.SpaceLock : icons.HashLock;
+    return space ? icons.SpaceLock : call ? icons.VolumeHigh : icons.HashLock;
   }
   if (joinRule === JoinRule.Public) {
-    return space ? icons.SpaceGlobe : icons.HashGlobe;
+    return space ? icons.SpaceGlobe : call ? icons.VolumeHigh : icons.HashGlobe;
   }
   return undefined;
 };

@@ -264,5 +264,25 @@ export function RenderMessageContent({
     return <MBadEncrypted />;
   }
 
+  const fallbackContent = getContent<Record<string, unknown>>();
+  if (fallbackContent && typeof fallbackContent.body === 'string') {
+    const FallbackComponent = msgType === 'm.server_notice' ? MNotice : MText;
+    return (
+      <FallbackComponent
+        edited={edited}
+        content={fallbackContent}
+        renderBody={(props) => (
+          <RenderBody
+            {...props}
+            highlightRegex={highlightRegex}
+            htmlReactParserOptions={htmlReactParserOptions}
+            linkifyOpts={linkifyOpts}
+          />
+        )}
+        renderUrlsPreview={urlPreview ? renderUrlsPreview : undefined}
+      />
+    );
+  }
+
   return <UnsupportedContent />;
 }

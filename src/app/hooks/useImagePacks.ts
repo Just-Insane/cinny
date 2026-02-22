@@ -1,5 +1,5 @@
 import { Room } from 'matrix-js-sdk';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { AccountDataEvent } from '../../types/matrix/accountData';
 import { StateEvent } from '../../types/matrix/room';
 import {
@@ -10,6 +10,7 @@ import {
   ImagePack,
   ImageUsage,
 } from '../plugins/custom-emoji';
+import { synchronizeGlobalEmotes } from '../../client/SlidingSyncController';
 import { useMatrixClient } from './useMatrixClient';
 import { useAccountDataCallback } from './useAccountDataCallback';
 import { useStateEventCallback } from './useStateEventCallback';
@@ -37,12 +38,17 @@ export const useGlobalImagePacks = (): ImagePack[] => {
   const mx = useMatrixClient();
   const [globalPacks, setGlobalPacks] = useState(() => getGlobalImagePacks(mx));
 
+  useEffect(() => {
+    void synchronizeGlobalEmotes(mx);
+  }, [mx]);
+
   useAccountDataCallback(
     mx,
     useCallback(
       (mEvent) => {
         if (mEvent.getType() === AccountDataEvent.PoniesEmoteRooms) {
           setGlobalPacks(getGlobalImagePacks(mx));
+          void synchronizeGlobalEmotes(mx);
         }
       },
       [mx]

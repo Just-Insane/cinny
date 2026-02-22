@@ -168,6 +168,90 @@ export const readPowerLevel: ReadPowerLevelAPI = {
   },
 };
 
+export type GetPowerLevel = (powerLevels: IPowerLevels, userId: string | undefined) => number;
+export type CanSend = (
+  powerLevels: IPowerLevels,
+  eventType: string | undefined,
+  powerLevel: number
+) => boolean;
+export type CanDoAction = (
+  powerLevels: IPowerLevels,
+  action: PowerLevelActions,
+  powerLevel: number
+) => boolean;
+export type CanDoNotificationAction = (
+  powerLevels: IPowerLevels,
+  action: PowerLevelNotificationsAction,
+  powerLevel: number
+) => boolean;
+
+export type PowerLevelsAPI = {
+  getPowerLevel: GetPowerLevel;
+  canSendEvent: CanSend;
+  canSendStateEvent: CanSend;
+  canDoAction: CanDoAction;
+  canDoNotificationAction: CanDoNotificationAction;
+};
+
+export const powerLevelAPI: PowerLevelsAPI = {
+  getPowerLevel: (powerLevels, userId) => readPowerLevel.user(powerLevels, userId),
+  canSendEvent: (powerLevels, eventType, powerLevel) => {
+    const requiredPL = readPowerLevel.event(powerLevels, eventType);
+    return powerLevel >= requiredPL;
+  },
+  canSendStateEvent: (powerLevels, eventType, powerLevel) => {
+    const requiredPL = readPowerLevel.state(powerLevels, eventType);
+    return powerLevel >= requiredPL;
+  },
+  canDoAction: (powerLevels, action, powerLevel) => {
+    const requiredPL = readPowerLevel.action(powerLevels, action);
+    return powerLevel >= requiredPL;
+  },
+  canDoNotificationAction: (powerLevels, action, powerLevel) => {
+    const requiredPL = readPowerLevel.notification(powerLevels, action);
+    return powerLevel >= requiredPL;
+  },
+};
+
+export const usePowerLevelsAPI = (powerLevels: IPowerLevels) => {
+  const getPowerLevel = useCallback(
+    (userId: string | undefined) => powerLevelAPI.getPowerLevel(powerLevels, userId),
+    [powerLevels]
+  );
+
+  const canSendEvent = useCallback(
+    (eventType: string | undefined, powerLevel: number) =>
+      powerLevelAPI.canSendEvent(powerLevels, eventType, powerLevel),
+    [powerLevels]
+  );
+
+  const canSendStateEvent = useCallback(
+    (eventType: string | undefined, powerLevel: number) =>
+      powerLevelAPI.canSendStateEvent(powerLevels, eventType, powerLevel),
+    [powerLevels]
+  );
+
+  const canDoAction = useCallback(
+    (action: PowerLevelActions, powerLevel: number) =>
+      powerLevelAPI.canDoAction(powerLevels, action, powerLevel),
+    [powerLevels]
+  );
+
+  const canDoNotificationAction = useCallback(
+    (action: PowerLevelNotificationsAction, powerLevel: number) =>
+      powerLevelAPI.canDoNotificationAction(powerLevels, action, powerLevel),
+    [powerLevels]
+  );
+
+  return {
+    getPowerLevel,
+    canSendEvent,
+    canSendStateEvent,
+    canDoAction,
+    canDoNotificationAction,
+  };
+};
+
 export const useGetMemberPowerLevel = (powerLevels: IPowerLevels) => {
   const callback = useCallback(
     (userId?: string): number => readPowerLevel.user(powerLevels, userId),

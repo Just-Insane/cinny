@@ -1,10 +1,19 @@
 export function pushSessionToSW(baseUrl?: string, accessToken?: string) {
   if (!('serviceWorker' in navigator)) return;
-  if (!navigator.serviceWorker.controller) return;
+  const post = () => {
+    navigator.serviceWorker.controller?.postMessage({
+      type: 'setSession',
+      accessToken,
+      baseUrl,
+    });
+  };
 
-  navigator.serviceWorker.controller.postMessage({
-    type: 'setSession',
-    accessToken,
-    baseUrl,
+  if (navigator.serviceWorker.controller) {
+    post();
+    return;
+  }
+
+  navigator.serviceWorker.ready.then(post).catch(() => {
+    // ignore if SW isn't available yet
   });
 }

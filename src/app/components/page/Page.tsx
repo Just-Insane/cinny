@@ -24,18 +24,20 @@ export function PageRoot({ nav, children }: PageRootProps) {
   );
 }
 
-type ClientDrawerLayoutProps = {
+type PageNavProps = {
   children: ReactNode;
-};
-export function PageNav({ size, children }: ClientDrawerLayoutProps & css.PageNavVariants) {
+} & css.PageNavVariants &
+  Omit<ComponentProps<typeof Box>, 'children'>;
+export function PageNav({ size, children, className, ...props }: PageNavProps) {
   const screenSize = useScreenSizeContext();
   const isMobile = screenSize === ScreenSize.Mobile;
 
   return (
     <Box
       grow={isMobile ? 'Yes' : undefined}
-      className={css.PageNav({ size })}
+      className={classNames(css.PageNav({ size }), className)}
       shrink={isMobile ? 'Yes' : 'No'}
+      {...props}
     >
       <Box grow="Yes" direction="Column">
         {children}
@@ -56,15 +58,14 @@ export const PageNavHeader = as<'header', css.PageNavHeaderVariants>(
   )
 );
 
-export function PageNavContent({
-  scrollRef,
-  children,
-}: {
+type PageNavContentProps = {
   children: ReactNode;
   scrollRef?: MutableRefObject<HTMLDivElement | null>;
-}) {
+} & Omit<ComponentProps<typeof Box>, 'children'>;
+
+export function PageNavContent({ scrollRef, children, className, ...props }: PageNavContentProps) {
   return (
-    <Box grow="Yes" direction="Column">
+    <Box grow="Yes" direction="Column" className={className} {...props}>
       <Scroll
         ref={scrollRef}
         variant="Background"

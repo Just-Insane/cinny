@@ -1,11 +1,11 @@
-import React, { useCallback, useRef } from 'react';
-import { Box, Text, config } from 'folds';
+import React, { useCallback, useEffect, useRef } from 'react';
+import { Box, Text, config } from 'folds'; // Assuming 'folds' is a UI library
 import { EventType, Room } from 'matrix-js-sdk';
 import { ReactEditor } from 'slate-react';
 import { isKeyHotkey } from 'is-hotkey';
 import { useStateEvent } from '../../hooks/useStateEvent';
 import { StateEvent } from '../../../types/matrix/room';
-import { usePowerLevelsContext } from '../../hooks/usePowerLevels';
+import { usePowerLevelsAPI, usePowerLevelsContext } from '../../hooks/usePowerLevels';
 import { useMatrixClient } from '../../hooks/useMatrixClient';
 import { useEditor } from '../../components/editor';
 import { RoomInputPlaceholder } from './RoomInputPlaceholder';
@@ -18,22 +18,32 @@ import { Page } from '../../components/page';
 import { RoomViewHeader } from './RoomViewHeader';
 import { useKeyDown } from '../../hooks/useKeyDown';
 import { editableActiveElement } from '../../utils/dom';
+import navigation from '../../../client/state/navigation';
 import { settingsAtom } from '../../state/settings';
 import { useSetting } from '../../state/hooks/settings';
-import { useRoomPermissions } from '../../hooks/useRoomPermissions';
-import { useRoomCreators } from '../../hooks/useRoomCreators';
+import {
+  getPowerLevelTag,
+  useAccessibleTagColors,
+  usePowerLevelTags,
+} from '../../hooks/usePowerLevelTags';
+import { useTheme } from '../../hooks/useTheme';
+import { SlidingSyncController } from '../../../client/SlidingSyncController';
 
 const FN_KEYS_REGEX = /^F\d+$/;
+
+/**
+ * Determines if a keyboard event should trigger focusing the message input field.
+ * @param evt - The KeyboardEvent.
+ * @returns True if the input should be focused, false otherwise.
+ */
 const shouldFocusMessageField = (evt: KeyboardEvent): boolean => {
   const { code } = evt;
   if (evt.metaKey || evt.altKey || evt.ctrlKey) {
     return false;
   }
 
-  // do not focus on F keys
   if (FN_KEYS_REGEX.test(code)) return false;
 
-  // do not focus on numlock/scroll lock
   if (
     code.startsWith('OS') ||
     code.startsWith('Meta') ||
@@ -52,39 +62,50 @@ const shouldFocusMessageField = (evt: KeyboardEvent): boolean => {
   ) {
     return false;
   }
-
   return true;
 };
 
 export function RoomView({ room, eventId }: { room: Room; eventId?: string }) {
   const roomInputRef = useRef<HTMLDivElement>(null);
   const roomViewRef = useRef<HTMLDivElement>(null);
-
   const [hideActivity] = useSetting(settingsAtom, 'hideActivity');
-
   const { roomId } = room;
   const editor = useEditor();
-
   const mx = useMatrixClient();
-
   const tombstoneEvent = useStateEvent(room, StateEvent.RoomTombstone);
   const powerLevels = usePowerLevelsContext();
-  const creators = useRoomCreators(room);
+  const { getPowerLevel, canSendEvent } = usePowerLevelsAPI(powerLevels);
+  const myUserId = mx.getUserId();
+  const canMessage = myUserId
+    ? canSendEvent(EventType.RoomMessage, getPowerLevel(myUserId))
+    : false;
+  const powerLevelTags = usePowerLevelTags(room, powerLevels);
+  const getPowerLevelTagForUser = useCallback(
+    (power: number) => getPowerLevelTag(powerLevelTags, power),
+    [powerLevelTags]
+  );
+  const theme = useTheme();
+  const accessibleTagColors = useAccessibleTagColors(theme.kind, powerLevelTags);
 
-  const permissions = useRoomPermissions(creators, powerLevels);
-  const canMessage = permissions.event(EventType.RoomMessage, mx.getSafeUserId());
+  useEffect(() => {
+    if (SlidingSyncController.isSupportedOnServer) {
+      void SlidingSyncController.getInstance().focusRoom(room.roomId);
+    }
+  }, [room.roomId]);
 
   useKeyDown(
     window,
     useCallback(
       (evt) => {
         if (editableActiveElement()) return;
-        const portalContainer = document.getElementById('portalContainer');
-        if (portalContainer && portalContainer.children.length > 0) {
+        if (document.querySelector('.ReactModalPortal > *') || navigation.isRawModalVisible) {
           return;
         }
+
         if (shouldFocusMessageField(evt) || isKeyHotkey('mod+v', evt)) {
-          ReactEditor.focus(editor);
+          if (editor) {
+            ReactEditor.focus(editor);
+          }
         }
       },
       [editor]
@@ -93,19 +114,22 @@ export function RoomView({ room, eventId }: { room: Room; eventId?: string }) {
 
   return (
     <Page ref={roomViewRef}>
-      <RoomViewHeader />
-      <Box grow="Yes" direction="Column">
+      {!room.isCallRoom() && <RoomViewHeader />}
+      <Box grow="Yes" direction="Column" style={{ flex: 1, overflow: 'hidden', minHeight: 0 }}>
         <RoomTimeline
           key={roomId}
           room={room}
           eventId={eventId}
           roomInputRef={roomInputRef}
           editor={editor}
+          getPowerLevelTag={getPowerLevelTagForUser}
+          accessibleTagColors={accessibleTagColors}
         />
         <RoomViewTyping room={room} />
       </Box>
       <Box shrink="No" direction="Column">
         <div style={{ padding: `0 ${config.space.S400}` }}>
+          {' '}
           {tombstoneEvent ? (
             <RoomTombstone
               roomId={roomId}
@@ -114,7 +138,7 @@ export function RoomView({ room, eventId }: { room: Room; eventId?: string }) {
             />
           ) : (
             <>
-              {canMessage && (
+              {canMessage ? (
                 <RoomInput
                   room={room}
                   editor={editor}
@@ -122,8 +146,7 @@ export function RoomView({ room, eventId }: { room: Room; eventId?: string }) {
                   fileDropContainerRef={roomViewRef}
                   ref={roomInputRef}
                 />
-              )}
-              {!canMessage && (
+              ) : (
                 <RoomInputPlaceholder
                   style={{ padding: config.space.S200 }}
                   alignItems="Center"

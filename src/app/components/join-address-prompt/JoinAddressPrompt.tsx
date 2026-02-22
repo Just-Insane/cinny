@@ -24,8 +24,9 @@ import { tryDecodeURIComponent } from '../../utils/dom';
 type JoinAddressProps = {
   onOpen: (roomIdOrAlias: string, via?: string[], eventId?: string) => void;
   onCancel: () => void;
+  defaultValue?: string;
 };
-export function JoinAddressPrompt({ onOpen, onCancel }: JoinAddressProps) {
+export function JoinAddressPrompt({ onOpen, onCancel, defaultValue }: JoinAddressProps) {
   const [invalid, setInvalid] = useState(false);
 
   const handleSubmit: FormEventHandler<HTMLFormElement> = (evt) => {
@@ -112,6 +113,7 @@ export function JoinAddressPrompt({ onOpen, onCancel }: JoinAddressProps) {
                   variant="Background"
                   placeholder="#community:server"
                   required
+                  defaultValue={defaultValue}
                 />
                 {invalid && (
                   <Text size="T200" style={{ color: color.Critical.Main }}>

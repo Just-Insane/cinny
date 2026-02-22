@@ -1,24 +1,21 @@
 import { createClient, MatrixClient, IndexedDBStore, IndexedDBCryptoStore } from 'matrix-js-sdk';
 
 import { cryptoCallbacks } from './secretStorageKeys';
+import { SlidingSyncController } from './SlidingSyncController';
 import { clearNavToActivePathStore } from '../app/state/navToActivePath';
 import { pushSessionToSW } from '../sw-session';
-
-type Session = {
-  baseUrl: string;
-  accessToken: string;
-  userId: string;
-  deviceId: string;
-};
+import { Session, getSessionStoreName } from '../app/state/sessions';
 
 export const initClient = async (session: Session): Promise<MatrixClient> => {
+  pushSessionToSW(session.baseUrl, session.accessToken);
+  const storeName = getSessionStoreName(session);
   const indexedDBStore = new IndexedDBStore({
     indexedDB: global.indexedDB,
     localStorage: global.localStorage,
-    dbName: 'web-sync-store',
+    dbName: storeName.sync,
   });
 
-  const legacyCryptoStore = new IndexedDBCryptoStore(global.indexedDB, 'crypto-store');
+  const legacyCryptoStore = new IndexedDBCryptoStore(global.indexedDB, storeName.crypto);
 
   const mx = createClient({
     baseUrl: session.baseUrl,
@@ -41,7 +38,22 @@ export const initClient = async (session: Session): Promise<MatrixClient> => {
 };
 
 export const startClient = async (mx: MatrixClient) => {
+  const syncController = SlidingSyncController.getInstance();
+
+  await syncController.verifyServerSupport(mx);
+
+  if (SlidingSyncController.isSupportedOnServer) {
+    const slidingSync = await syncController.initialize(mx);
+
+    await mx.startClient({
+      slidingSync,
+      lazyLoadMembers: true,
+    });
+    return;
+  }
+
   await mx.startClient({
+    initialSyncLimit: 20,
     lazyLoadMembers: true,
   });
 };

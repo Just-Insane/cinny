@@ -1,10 +1,14 @@
-import { Room } from 'matrix-js-sdk';
+import { MatrixClient, Room } from 'matrix-js-sdk';
 import { useMemo } from 'react';
 import { IPowerLevels } from './usePowerLevels';
 import { useStateEvent } from './useStateEvent';
-import { MemberPowerTag, StateEvent } from '../../types/matrix/room';
+import { MemberPowerTag, MemberPowerTagIcon, StateEvent } from '../../types/matrix/room';
+import { ThemeKind } from './useTheme';
+import { accessibleColor } from '../plugins/color';
 
-export type PowerLevelTags = Record<number, MemberPowerTag>;
+export type PowerLevelTagIcon = MemberPowerTagIcon;
+export type PowerLevelTag = MemberPowerTag;
+export type PowerLevelTags = Record<number, PowerLevelTag>;
 
 const powerSortFn = (a: number, b: number) => b - a;
 const sortPowers = (powers: number[]): number[] => powers.sort(powerSortFn);
@@ -76,7 +80,7 @@ const DEFAULT_TAGS: PowerLevelTags = {
   },
 };
 
-const generateFallbackTag = (powerLevelTags: PowerLevelTags, power: number): MemberPowerTag => {
+const generateFallbackTag = (powerLevelTags: PowerLevelTags, power: number): PowerLevelTag => {
   const highToLow = sortPowers(getPowers(powerLevelTags));
 
   const tagPower = highToLow.find((p) => p < power);
@@ -110,7 +114,39 @@ export const usePowerLevelTags = (room: Room, powerLevels: IPowerLevels): PowerL
 export const getPowerLevelTag = (
   powerLevelTags: PowerLevelTags,
   powerLevel: number
-): MemberPowerTag => {
-  const tag: MemberPowerTag | undefined = powerLevelTags[powerLevel];
+): PowerLevelTag => {
+  const tag: PowerLevelTag | undefined = powerLevelTags[powerLevel];
   return tag ?? generateFallbackTag(powerLevelTags, powerLevel);
+};
+
+export type GetPowerLevelTag = (powerLevel: number) => PowerLevelTag;
+
+export const getTagIconSrc = (
+  mx: MatrixClient,
+  useAuthentication: boolean,
+  icon: PowerLevelTagIcon
+): string | undefined =>
+  icon?.key?.startsWith('mxc://')
+    ? mx.mxcUrlToHttp(icon.key, 96, 96, 'scale', undefined, undefined, useAuthentication) ?? '🌻'
+    : icon?.key;
+
+export const useAccessibleTagColors = (
+  themeKind: ThemeKind,
+  powerLevelTags: PowerLevelTags
+): Map<string, string> => {
+  const accessibleColors: Map<string, string> = useMemo(() => {
+    const colors: Map<string, string> = new Map();
+
+    getPowers(powerLevelTags).forEach((power) => {
+      const tag = powerLevelTags[power];
+      const { color } = tag;
+      if (!color) return;
+
+      colors.set(color, accessibleColor(themeKind, color));
+    });
+
+    return colors;
+  }, [powerLevelTags, themeKind]);
+
+  return accessibleColors;
 };

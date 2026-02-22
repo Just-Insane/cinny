@@ -3,7 +3,6 @@ import {
   Badge,
   Box,
   Button,
-  Chip,
   Icon,
   Icons,
   Spinner,
@@ -23,7 +22,8 @@ import {
 import * as css from './style.css';
 import { useMatrixClient } from '../../../hooks/useMatrixClient';
 import { AsyncStatus, useAsyncCallback } from '../../../hooks/useAsyncCallback';
-import { bytesToSize, millisecondsToMinutesAndSeconds } from '../../../utils/common';
+import { bytesToSize } from '../../../utils/common';
+import { millisecondsToMinutesAndSeconds } from '../../../utils/common';
 import {
   decryptFile,
   downloadEncryptedMedia,
@@ -48,8 +48,6 @@ type VideoContentProps = {
   info: IVideoInfo & IThumbnailContent;
   encInfo?: EncryptedAttachmentInfo;
   autoPlay?: boolean;
-  markedAsSpoiler?: boolean;
-  spoilerReason?: string;
   renderThumbnail?: () => ReactNode;
   renderVideo: (props: RenderVideoProps) => ReactNode;
 };
@@ -63,8 +61,6 @@ export const VideoContent = as<'div', VideoContentProps>(
       info,
       encInfo,
       autoPlay,
-      markedAsSpoiler,
-      spoilerReason,
       renderThumbnail,
       renderVideo,
       ...props
@@ -77,13 +73,12 @@ export const VideoContent = as<'div', VideoContentProps>(
 
     const [load, setLoad] = useState(false);
     const [error, setError] = useState(false);
-    const [blurred, setBlurred] = useState(markedAsSpoiler ?? false);
 
     const [srcState, loadSrc] = useAsyncCallback(
       useCallback(async () => {
-        const mediaUrl = mxcUrlToHttp(mx, url, useAuthentication);
-        if (!mediaUrl) throw new Error('Invalid media URL');
-        const fileContent = encInfo
+ const mediaUrl = mxcUrlToHttp(mx, url, useAuthentication);
+      if (!mediaUrl) throw new Error('Invalid media URL');
+          const fileContent = encInfo
           ? await downloadEncryptedMedia(mediaUrl, (encBuf) =>
               decryptFile(encBuf, mimeType, encInfo)
             )
@@ -121,15 +116,11 @@ export const VideoContent = as<'div', VideoContentProps>(
           />
         )}
         {renderThumbnail && !load && (
-          <Box
-            className={classNames(css.AbsoluteContainer, blurred && css.Blur)}
-            alignItems="Center"
-            justifyContent="Center"
-          >
+          <Box className={css.AbsoluteContainer} alignItems="Center" justifyContent="Center">
             {renderThumbnail()}
           </Box>
         )}
-        {!autoPlay && !blurred && srcState.status === AsyncStatus.Idle && (
+        {!autoPlay && srcState.status === AsyncStatus.Idle && (
           <Box className={css.AbsoluteContainer} alignItems="Center" justifyContent="Center">
             <Button
               variant="Secondary"
@@ -144,7 +135,7 @@ export const VideoContent = as<'div', VideoContentProps>(
           </Box>
         )}
         {srcState.status === AsyncStatus.Success && (
-          <Box className={classNames(css.AbsoluteContainer, blurred && css.Blur)}>
+          <Box className={css.AbsoluteContainer}>
             {renderVideo({
               title: body,
               src: srcState.data,
@@ -155,39 +146,8 @@ export const VideoContent = as<'div', VideoContentProps>(
             })}
           </Box>
         )}
-        {blurred && !error && srcState.status !== AsyncStatus.Error && (
-          <Box className={css.AbsoluteContainer} alignItems="Center" justifyContent="Center">
-            <TooltipProvider
-              tooltip={
-                typeof spoilerReason === 'string' && (
-                  <Tooltip variant="Secondary">
-                    <Text>{spoilerReason}</Text>
-                  </Tooltip>
-                )
-              }
-              position="Top"
-              align="Center"
-            >
-              {(triggerRef) => (
-                <Chip
-                  ref={triggerRef}
-                  variant="Secondary"
-                  radii="Pill"
-                  size="500"
-                  outlined
-                  onClick={() => {
-                    setBlurred(false);
-                  }}
-                >
-                  <Text size="B300">Spoiler</Text>
-                </Chip>
-              )}
-            </TooltipProvider>
-          </Box>
-        )}
         {(srcState.status === AsyncStatus.Loading || srcState.status === AsyncStatus.Success) &&
-          !load &&
-          !blurred && (
+          !load && (
             <Box className={css.AbsoluteContainer} alignItems="Center" justifyContent="Center">
               <Spinner variant="Secondary" />
             </Box>

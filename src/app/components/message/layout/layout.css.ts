@@ -120,12 +120,11 @@ export const CompactHeader = style([
 export const AvatarBase = style({
   paddingTop: toRem(4),
   transition: 'transform 200ms cubic-bezier(0, 0.8, 0.67, 0.97)',
-  display: 'flex',
   alignSelf: 'start',
 
   selectors: {
     '&:hover': {
-      transform: `translateY(${toRem(-2)})`,
+      transform: `translateY(${toRem(-4)})`,
     },
   },
 });
@@ -134,31 +133,25 @@ export const ModernBefore = style({
   minWidth: toRem(36),
 });
 
-export const BubbleBefore = style({
-  minWidth: toRem(36),
-});
+export const BubbleBefore = style([ModernBefore]);
 
 export const BubbleContent = style({
   maxWidth: toRem(800),
   padding: config.space.S200,
   backgroundColor: color.SurfaceVariant.Container,
   color: color.SurfaceVariant.OnContainer,
-  borderRadius: config.radii.R500,
-  position: 'relative',
+  borderRadius: config.radii.R400,
 });
 
 export const BubbleContentArrowLeft = style({
-  borderTopLeftRadius: 0,
+  position: 'relative',
+  paddingLeft: `calc(${config.space.S200} + ${toRem(8)})`,
 });
 
 export const BubbleLeftArrow = style({
-  width: toRem(9),
-  height: toRem(8),
-
   position: 'absolute',
-  top: 0,
-  left: toRem(-8),
-  zIndex: 1,
+  left: toRem(8),
+  top: toRem(12),
 });
 
 export const Username = style({
@@ -192,12 +185,11 @@ export const MessageTextBody = recipe({
     jumboEmoji: {
       true: {
         fontSize: '1.504em',
-        lineHeight: '1.4962em',
+        lineHeight: 1.1,
       },
     },
     emote: {
       true: {
-        color: color.Success.Main,
         fontStyle: 'italic',
       },
     },

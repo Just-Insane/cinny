@@ -1,12 +1,14 @@
 import React, { ComponentProps } from 'react';
 import { Text, as } from 'folds';
 import { timeDayMonYear, timeHourMinute, today, yesterday } from '../../utils/time';
+import { useSetting } from '../../state/hooks/settings';
+import { settingsAtom } from '../../state/settings';
 
 export type TimeProps = {
   compact?: boolean;
   ts: number;
-  hour24Clock: boolean;
-  dateFormatString: string;
+  hour24Clock?: boolean;
+  dateFormatString?: string;
 };
 
 /**
@@ -23,7 +25,11 @@ export type TimeProps = {
  */
 export const Time = as<'span', TimeProps & ComponentProps<typeof Text>>(
   ({ compact, hour24Clock, dateFormatString, ts, ...props }, ref) => {
-    const formattedTime = timeHourMinute(ts, hour24Clock);
+    const [hour24ClockSetting] = useSetting(settingsAtom, 'hour24Clock');
+    const [dateFormatSetting] = useSetting(settingsAtom, 'dateFormatString');
+    const resolvedHour24Clock = hour24Clock ?? hour24ClockSetting;
+    const resolvedDateFormatString = dateFormatString ?? dateFormatSetting;
+    const formattedTime = timeHourMinute(ts, resolvedHour24Clock);
 
     let time = '';
     if (compact) {
@@ -33,7 +39,7 @@ export const Time = as<'span', TimeProps & ComponentProps<typeof Text>>(
     } else if (yesterday(ts)) {
       time = `Yesterday ${formattedTime}`;
     } else {
-      time = `${timeDayMonYear(ts, dateFormatString)} ${formattedTime}`;
+      time = `${timeDayMonYear(ts, resolvedDateFormatString)} ${formattedTime}`;
     }
 
     return (

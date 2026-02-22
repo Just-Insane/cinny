@@ -85,6 +85,7 @@ import {
 } from '../../utils/room';
 import { useSetting } from '../../state/hooks/settings';
 import { MessageLayout, settingsAtom } from '../../state/settings';
+import { useOpenUserRoomProfile } from '../../state/hooks/userRoomProfile';
 import { useMatrixEventRenderer } from '../../hooks/useMatrixEventRenderer';
 import { Reactions, Message, Event, EncryptedContent } from './message';
 import { useMemberEventParser } from '../../hooks/useMemberEventParser';
@@ -94,14 +95,14 @@ import {
   getIntersectionObserverEntry,
   useIntersectionObserver,
 } from '../../hooks/useIntersectionObserver';
-import { markAsRead } from '../../utils/notifications';
+import { markAsRead } from '../../../client/action/notifications';
 import { useDebounce } from '../../hooks/useDebounce';
 import { getResizeObserverEntry, useResizeObserver } from '../../hooks/useResizeObserver';
 import * as css from './RoomTimeline.css';
 import { inSameDay, minuteDifference, timeDayMonthYear, today, yesterday } from '../../utils/time';
 import { createMentionElement, isEmptyEditor, moveCursor } from '../../components/editor';
 import { roomIdToReplyDraftAtomFamily } from '../../state/room/roomInputDrafts';
-import { usePowerLevelsContext } from '../../hooks/usePowerLevels';
+import { usePowerLevelsAPI, usePowerLevelsContext } from '../../hooks/usePowerLevels';
 import { GetContentCallback, MessageEvent, StateEvent } from '../../../types/matrix/room';
 import { useKeyDown } from '../../hooks/useKeyDown';
 import { useDocumentFocusChange } from '../../hooks/useDocumentFocusChange';
@@ -117,15 +118,8 @@ import { useRoomNavigate } from '../../hooks/useRoomNavigate';
 import { useMediaAuthentication } from '../../hooks/useMediaAuthentication';
 import { useIgnoredUsers } from '../../hooks/useIgnoredUsers';
 import { useImagePackRooms } from '../../hooks/useImagePackRooms';
+import { GetPowerLevelTag } from '../../hooks/usePowerLevelTags';
 import { useIsDirectRoom } from '../../hooks/useRoom';
-import { useOpenUserRoomProfile } from '../../state/hooks/userRoomProfile';
-import { useSpaceOptionally } from '../../hooks/useSpace';
-import { useRoomCreators } from '../../hooks/useRoomCreators';
-import { useRoomPermissions } from '../../hooks/useRoomPermissions';
-import { useAccessiblePowerTagColors, useGetMemberPowerTag } from '../../hooks/useMemberPowerTag';
-import { useTheme } from '../../hooks/useTheme';
-import { useRoomCreatorsTag } from '../../hooks/useRoomCreatorsTag';
-import { usePowerLevelTags } from '../../hooks/usePowerLevelTags';
 
 const TimelineFloat = as<'div', css.TimelineFloatVariants>(
   ({ position, className, ...props }, ref) => (
@@ -228,6 +222,8 @@ type RoomTimelineProps = {
   eventId?: string;
   roomInputRef: RefObject<HTMLElement>;
   editor: Editor;
+  getPowerLevelTag: GetPowerLevelTag;
+  accessibleTagColors: Map<string, string>;
 };
 
 const PAGINATION_LIMIT = 80;
@@ -430,8 +426,16 @@ const getRoomUnreadInfo = (room: Room, scrollTo = false) => {
   };
 };
 
-export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimelineProps) {
+export function RoomTimeline({
+  room,
+  eventId,
+  roomInputRef,
+  editor,
+  getPowerLevelTag,
+  accessibleTagColors,
+}: RoomTimelineProps) {
   const mx = useMatrixClient();
+  const { t } = useTranslation();
   const useAuthentication = useMediaAuthentication();
   const [hideActivity] = useSetting(settingsAtom, 'hideActivity');
   const [messageLayout] = useSetting(settingsAtom, 'messageLayout');
@@ -447,33 +451,22 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
   const [showHiddenEvents] = useSetting(settingsAtom, 'showHiddenEvents');
   const [showDeveloperTools] = useSetting(settingsAtom, 'developerTools');
 
-  const [hour24Clock] = useSetting(settingsAtom, 'hour24Clock');
-  const [dateFormatString] = useSetting(settingsAtom, 'dateFormatString');
-
   const ignoredUsersList = useIgnoredUsers();
   const ignoredUsersSet = useMemo(() => new Set(ignoredUsersList), [ignoredUsersList]);
 
   const setReplyDraft = useSetAtom(roomIdToReplyDraftAtomFamily(room.roomId));
   const powerLevels = usePowerLevelsContext();
-  const creators = useRoomCreators(room);
-
-  const creatorsTag = useRoomCreatorsTag();
-  const powerLevelTags = usePowerLevelTags(room, powerLevels);
-  const getMemberPowerTag = useGetMemberPowerTag(room, creators, powerLevels);
-
-  const theme = useTheme();
-  const accessiblePowerTagColors = useAccessiblePowerTagColors(
-    theme.kind,
-    creatorsTag,
-    powerLevelTags
+  const { canDoAction, canSendEvent, canSendStateEvent, getPowerLevel } =
+    usePowerLevelsAPI(powerLevels);
+  const getMemberPowerTag = useCallback(
+    (userId: string) => getPowerLevelTag(getPowerLevel(userId)),
+    [getPowerLevel, getPowerLevelTag]
   );
 
-  const permissions = useRoomPermissions(creators, powerLevels);
-
-  const canRedact = permissions.action('redact', mx.getSafeUserId());
-  const canDeleteOwn = permissions.event(MessageEvent.RoomRedaction, mx.getSafeUserId());
-  const canSendReaction = permissions.event(MessageEvent.Reaction, mx.getSafeUserId());
-  const canPinEvent = permissions.stateEvent(StateEvent.RoomPinnedEvents, mx.getSafeUserId());
+  const myPowerLevel = getPowerLevel(mx.getUserId() ?? '');
+  const canRedact = canDoAction('redact', myPowerLevel);
+  const canSendReaction = canSendEvent(MessageEvent.Reaction, myPowerLevel);
+  const canPinEvent = canSendStateEvent(StateEvent.RoomPinnedEvents, myPowerLevel);
   const [editId, setEditId] = useState<string>();
 
   const roomToParents = useAtomValue(roomToParentsAtom);
@@ -482,7 +475,6 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
   const mentionClickHandler = useMentionClickHandler(room.roomId);
   const spoilerClickHandler = useSpoilerClickHandler();
   const openUserRoomProfile = useOpenUserRoomProfile();
-  const space = useSpaceOptionally();
 
   const imagePackRooms: Room[] = useImagePackRooms(room.roomId, roomToParents);
 
@@ -607,15 +599,8 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
     room,
     useCallback(
       (mEvt: MatrixEvent) => {
-        // if user is at bottom of timeline
-        // keep paginating timeline and conditionally mark as read
-        // otherwise we update timeline without paginating
-        // so timeline can be updated with evt like: edits, reactions etc
         if (atBottomRef.current) {
           if (document.hasFocus() && (!unreadInfo || mEvt.getSender() === mx.getUserId())) {
-            // Check if the document is in focus (user is actively viewing the app),
-            // and either there are no unread messages or the latest message is from the current user.
-            // If either condition is met, trigger the markAsRead function to send a read receipt.
             requestAnimationFrame(() => markAsRead(mx, mEvt.getRoomId()!, hideActivity));
           }
 
@@ -683,13 +668,11 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
     }, [room, liveTimelineLinked])
   );
 
-  // Stay at bottom when room editor resize
   useResizeObserver(
     useMemo(() => {
       let mounted = false;
       return (entries) => {
         if (!mounted) {
-          // skip initial mounting call
           mounted = true;
           return;
         }
@@ -757,8 +740,6 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
         if (inFocus && atBottomRef.current) {
           if (unreadInfo?.inLiveTimeline) {
             handleOpenEvent(unreadInfo.readUptoEventId, false, (scrolled) => {
-              // the unread event is already in view
-              // so, try mark as read;
               if (!scrolled) {
                 tryAutoMarkAsRead();
               }
@@ -772,7 +753,6 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
     )
   );
 
-  // Handle up arrow edit
   useKeyDown(
     window,
     useCallback(
@@ -803,7 +783,6 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
     }
   }, [eventId, loadEventTimeline]);
 
-  // Scroll to bottom on initial timeline load
   useLayoutEffect(() => {
     const scrollEl = scrollRef.current;
     if (scrollEl) {
@@ -811,8 +790,6 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
     }
   }, []);
 
-  // if live timeline is linked and unreadInfo change
-  // Scroll to last read message
   useLayoutEffect(() => {
     const { readUptoEventId, inLiveTimeline, scrollTo } = unreadInfo ?? {};
     if (readUptoEventId && inLiveTimeline && scrollTo) {
@@ -830,7 +807,6 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
     }
   }, [room, unreadInfo, scrollToItem]);
 
-  // scroll to focused message
   useLayoutEffect(() => {
     if (focusItem && focusItem.scrollTo) {
       scrollToItem(focusItem.index, {
@@ -849,7 +825,6 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
     }, 2000);
   }, [alive, focusItem, scrollToItem]);
 
-  // scroll to bottom of timeline
   const scrollToBottomCount = scrollToBottomRef.current.count;
   useLayoutEffect(() => {
     if (scrollToBottomCount > 0) {
@@ -859,14 +834,24 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
     }
   }, [scrollToBottomCount]);
 
-  // Remove unreadInfo on mark as read
   useEffect(() => {
     if (!unread) {
       setUnreadInfo(undefined);
     }
   }, [unread]);
 
-  // scroll out of view msg editor in view.
+  const handleEdit = useCallback(
+    (editEvtId?: string) => {
+      if (editEvtId) {
+        setEditId(editEvtId);
+        return;
+      }
+      setEditId(undefined);
+      ReactEditor.focus(editor);
+    },
+    [editor]
+  );
+
   useEffect(() => {
     if (editId) {
       const editMsgElement =
@@ -922,12 +907,12 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
       }
       openUserRoomProfile(
         room.roomId,
-        space?.roomId,
+        undefined,
         userId,
         evt.currentTarget.getBoundingClientRect()
       );
     },
-    [room, space, openUserRoomProfile]
+    [openUserRoomProfile, room.roomId]
   );
   const handleUsernameClick: MouseEventHandler<HTMLButtonElement> = useCallback(
     (evt) => {
@@ -952,7 +937,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
   );
 
   const handleReplyClick: MouseEventHandler<HTMLButtonElement> = useCallback(
-    (evt, startThread = false) => {
+    (evt) => {
       const replyId = evt.currentTarget.getAttribute('data-event-id');
       if (!replyId) {
         console.warn('Button should have "data-event-id" attribute!');
@@ -963,9 +948,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
       const editedReply = getEditedEvent(replyId, replyEvt, room.getUnfilteredTimelineSet());
       const content: IContent = editedReply?.getContent()['m.new_content'] ?? replyEvt.getContent();
       const { body, formatted_body: formattedBody } = content;
-      const { 'm.relates_to': relation } = startThread
-        ? { 'm.relates_to': { rel_type: 'm.thread', event_id: replyId } }
-        : replyEvt.getWireContent();
+      const { 'm.relates_to': relation } = replyEvt.getWireContent();
       const senderId = replyEvt.getSender();
       if (senderId && typeof body === 'string') {
         setReplyDraft({
@@ -998,24 +981,12 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
         (reactions.find(eventWithShortcode)?.getContent().shortcode as string | undefined);
       mx.sendEvent(
         room.roomId,
-        MessageEvent.Reaction as any,
+        MessageEvent.Reaction,
         getReactionContent(targetEventId, key, rShortcode)
       );
     },
     [mx, room]
   );
-  const handleEdit = useCallback(
-    (editEvtId?: string) => {
-      if (editEvtId) {
-        setEditId(editEvtId);
-        return;
-      }
-      setEditId(undefined);
-      ReactEditor.focus(editor);
-    },
-    [editor]
-  );
-  const { t } = useTranslation();
 
   const renderMatrixEvent = useMatrixEventRenderer<
     [string, MatrixEvent, number, EventTimelineSet, boolean]
@@ -1033,6 +1004,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
           editedEvent?.getContent()['m.new_content'] ?? mEvent.getContent()) as GetContentCallback;
 
         const senderId = mEvent.getSender() ?? '';
+        const senderPowerLevel = getPowerLevel(mEvent.getSender());
         const senderDisplayName =
           getMemberDisplayName(room, senderId) ?? getMxIdLocalPart(senderId) ?? senderId;
 
@@ -1048,7 +1020,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
             collapse={collapse}
             highlight={highlighted}
             edit={editId === mEventId}
-            canDelete={canRedact || (canDeleteOwn && mEvent.getSender() === mx.getUserId())}
+            canDelete={canRedact || mEvent.getSender() === mx.getUserId()}
             canSendReaction={canSendReaction}
             canPinEvent={canPinEvent}
             imagePackRooms={imagePackRooms}
@@ -1067,7 +1039,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
                   threadRootId={threadRootId}
                   onClick={handleOpenReply}
                   getMemberPowerTag={getMemberPowerTag}
-                  accessibleTagColors={accessiblePowerTagColors}
+                  accessibleTagColors={accessibleTagColors}
                   legacyUsernameColor={legacyUsernameColor || direct}
                 />
               )
@@ -1086,11 +1058,9 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
             }
             hideReadReceipts={hideActivity}
             showDeveloperTools={showDeveloperTools}
-            memberPowerTag={getMemberPowerTag(senderId)}
-            accessibleTagColors={accessiblePowerTagColors}
+            powerLevelTag={getPowerLevelTag(senderPowerLevel)}
+            accessibleTagColors={accessibleTagColors}
             legacyUsernameColor={legacyUsernameColor || direct}
-            hour24Clock={hour24Clock}
-            dateFormatString={dateFormatString}
           >
             {mEvent.isRedacted() ? (
               <RedactedContent reason={mEvent.getUnsigned().redacted_because?.content.reason} />
@@ -1117,6 +1087,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
         const hasReactions = reactions && reactions.length > 0;
         const { replyEventId, threadRootId } = mEvent;
         const highlighted = focusItem?.index === item && focusItem.highlight;
+        const senderPowerLevel = getPowerLevel(mEvent.getSender());
 
         return (
           <Message
@@ -1130,7 +1101,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
             collapse={collapse}
             highlight={highlighted}
             edit={editId === mEventId}
-            canDelete={canRedact || (canDeleteOwn && mEvent.getSender() === mx.getUserId())}
+            canDelete={canRedact || mEvent.getSender() === mx.getUserId()}
             canSendReaction={canSendReaction}
             canPinEvent={canPinEvent}
             imagePackRooms={imagePackRooms}
@@ -1149,7 +1120,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
                   threadRootId={threadRootId}
                   onClick={handleOpenReply}
                   getMemberPowerTag={getMemberPowerTag}
-                  accessibleTagColors={accessiblePowerTagColors}
+                  accessibleTagColors={accessibleTagColors}
                   legacyUsernameColor={legacyUsernameColor || direct}
                 />
               )
@@ -1168,11 +1139,9 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
             }
             hideReadReceipts={hideActivity}
             showDeveloperTools={showDeveloperTools}
-            memberPowerTag={getMemberPowerTag(mEvent.getSender() ?? '')}
-            accessibleTagColors={accessiblePowerTagColors}
+            powerLevelTag={getPowerLevelTag(senderPowerLevel)}
+            accessibleTagColors={accessibleTagColors}
             legacyUsernameColor={legacyUsernameColor || direct}
-            hour24Clock={hour24Clock}
-            dateFormatString={dateFormatString}
           >
             <EncryptedContent mEvent={mEvent}>
               {() => {
@@ -1236,6 +1205,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
         const reactions = reactionRelations && reactionRelations.getSortedAnnotationsByKey();
         const hasReactions = reactions && reactions.length > 0;
         const highlighted = focusItem?.index === item && focusItem.highlight;
+        const senderPowerLevel = getPowerLevel(mEvent.getSender());
 
         return (
           <Message
@@ -1248,7 +1218,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
             messageLayout={messageLayout}
             collapse={collapse}
             highlight={highlighted}
-            canDelete={canRedact || (canDeleteOwn && mEvent.getSender() === mx.getUserId())}
+            canDelete={canRedact || mEvent.getSender() === mx.getUserId()}
             canSendReaction={canSendReaction}
             canPinEvent={canPinEvent}
             imagePackRooms={imagePackRooms}
@@ -1271,11 +1241,9 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
             }
             hideReadReceipts={hideActivity}
             showDeveloperTools={showDeveloperTools}
-            memberPowerTag={getMemberPowerTag(mEvent.getSender() ?? '')}
-            accessibleTagColors={accessiblePowerTagColors}
+            powerLevelTag={getPowerLevelTag(senderPowerLevel)}
+            accessibleTagColors={accessibleTagColors}
             legacyUsernameColor={legacyUsernameColor || direct}
-            hour24Clock={hour24Clock}
-            dateFormatString={dateFormatString}
           >
             {mEvent.isRedacted() ? (
               <RedactedContent reason={mEvent.getUnsigned().redacted_because?.content.reason} />
@@ -1304,12 +1272,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
         const parsed = parseMemberEvent(mEvent);
 
         const timeJSX = (
-          <Time
-            ts={mEvent.getTs()}
-            compact={messageLayout === MessageLayout.Compact}
-            hour24Clock={hour24Clock}
-            dateFormatString={dateFormatString}
-          />
+          <Time ts={mEvent.getTs()} compact={messageLayout === MessageLayout.Compact} />
         );
 
         return (
@@ -1346,12 +1309,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
         const senderName = getMemberDisplayName(room, senderId) || getMxIdLocalPart(senderId);
 
         const timeJSX = (
-          <Time
-            ts={mEvent.getTs()}
-            compact={messageLayout === MessageLayout.Compact}
-            hour24Clock={hour24Clock}
-            dateFormatString={dateFormatString}
-          />
+          <Time ts={mEvent.getTs()} compact={messageLayout === MessageLayout.Compact} />
         );
 
         return (
@@ -1389,12 +1347,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
         const senderName = getMemberDisplayName(room, senderId) || getMxIdLocalPart(senderId);
 
         const timeJSX = (
-          <Time
-            ts={mEvent.getTs()}
-            compact={messageLayout === MessageLayout.Compact}
-            hour24Clock={hour24Clock}
-            dateFormatString={dateFormatString}
-          />
+          <Time ts={mEvent.getTs()} compact={messageLayout === MessageLayout.Compact} />
         );
 
         return (
@@ -1432,12 +1385,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
         const senderName = getMemberDisplayName(room, senderId) || getMxIdLocalPart(senderId);
 
         const timeJSX = (
-          <Time
-            ts={mEvent.getTs()}
-            compact={messageLayout === MessageLayout.Compact}
-            hour24Clock={hour24Clock}
-            dateFormatString={dateFormatString}
-          />
+          <Time ts={mEvent.getTs()} compact={messageLayout === MessageLayout.Compact} />
         );
 
         return (
@@ -1477,12 +1425,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
       const senderName = getMemberDisplayName(room, senderId) || getMxIdLocalPart(senderId);
 
       const timeJSX = (
-        <Time
-          ts={mEvent.getTs()}
-          compact={messageLayout === MessageLayout.Compact}
-          hour24Clock={hour24Clock}
-          dateFormatString={dateFormatString}
-        />
+        <Time ts={mEvent.getTs()} compact={messageLayout === MessageLayout.Compact} />
       );
 
       return (
@@ -1527,12 +1470,7 @@ export function RoomTimeline({ room, eventId, roomInputRef, editor }: RoomTimeli
       const senderName = getMemberDisplayName(room, senderId) || getMxIdLocalPart(senderId);
 
       const timeJSX = (
-        <Time
-          ts={mEvent.getTs()}
-          compact={messageLayout === MessageLayout.Compact}
-          hour24Clock={hour24Clock}
-          dateFormatString={dateFormatString}
-        />
+        <Time ts={mEvent.getTs()} compact={messageLayout === MessageLayout.Compact} />
       );
 
       return (

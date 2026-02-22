@@ -34,7 +34,8 @@ import { useSyncState } from '../../hooks/useSyncState';
 import { stopPropagation } from '../../utils/keyboard';
 import { SyncStatus } from './SyncStatus';
 import { AuthMetadataProvider } from '../../hooks/useAuthMetadata';
-import { getFallbackSession } from '../../state/sessions';
+import { getSecret } from '../../../client/state/auth';
+import { useAppVisibility } from '../../hooks/useAppVisibility';
 
 function ClientRootLoading() {
   return (
@@ -143,11 +144,11 @@ type ClientRootProps = {
 };
 export function ClientRoot({ children }: ClientRootProps) {
   const [loading, setLoading] = useState(true);
-  const { baseUrl } = getFallbackSession() ?? {};
+  const { baseUrl } = getSecret() ?? {};
 
   const [loadState, loadMatrix] = useAsyncCallback<MatrixClient, Error, []>(
     useCallback(() => {
-      const session = getFallbackSession();
+      const session = getSecret();
       if (!session) {
         throw new Error('No session Found!');
       }
@@ -160,6 +161,7 @@ export function ClientRoot({ children }: ClientRootProps) {
   );
 
   useLogoutListener(mx);
+  useAppVisibility(mx);
 
   useEffect(() => {
     if (loadState.status === AsyncStatus.Idle) {

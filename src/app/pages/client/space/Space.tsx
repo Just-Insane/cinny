@@ -10,7 +10,6 @@ import { useAtom, useAtomValue } from 'jotai';
 import {
   Avatar,
   Box,
-  Button,
   Icon,
   IconButton,
   Icons,
@@ -19,9 +18,7 @@ import {
   MenuItem,
   PopOut,
   RectCords,
-  Spinner,
   Text,
-  color,
   config,
   toRem,
 } from 'folds';
@@ -29,6 +26,7 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { JoinRule, Room } from 'matrix-js-sdk';
 import { RoomJoinRulesEventContent } from 'matrix-js-sdk/lib/types';
 import FocusTrap from 'focus-trap-react';
+import { logger } from 'matrix-js-sdk/lib/logger';
 import { useMatrixClient } from '../../../hooks/useMatrixClient';
 import { mDirectAtom } from '../../../state/mDirectList';
 import {
@@ -48,7 +46,8 @@ import {
 import { useSpace } from '../../../hooks/useSpace';
 import { VirtualTile } from '../../../components/virtualizer';
 import { RoomNavCategoryButton, RoomNavItem } from '../../../features/room-nav';
-import { makeNavCategoryId } from '../../../state/closedNavCategories';
+// Using the original name for clarity when generating space category IDs
+import { makeNavCategoryId as makeSpaceNavCategoryId } from '../../../state/closedNavCategories';
 import { roomToUnreadAtom } from '../../../state/room/roomToUnread';
 import { useCategoryHandler } from '../../../hooks/useCategoryHandler';
 import { useNavToActivePathMapper } from '../../../hooks/useNavToActivePathMapper';
@@ -56,17 +55,18 @@ import { useRoomName } from '../../../hooks/useRoomMeta';
 import { useSpaceJoinedHierarchy } from '../../../hooks/useSpaceHierarchy';
 import { allRoomsAtom } from '../../../state/room-list/roomList';
 import { PageNav, PageNavContent, PageNavHeader } from '../../../components/page';
-import { usePowerLevels } from '../../../hooks/usePowerLevels';
+import { usePowerLevels, usePowerLevelsAPI } from '../../../hooks/usePowerLevels';
+import { openInviteUser } from '../../../../client/action/navigation';
 import { useRecursiveChildScopeFactory, useSpaceChildren } from '../../../state/hooks/roomList';
 import { roomToParentsAtom } from '../../../state/room/roomToParents';
-import { markAsRead } from '../../../utils/notifications';
+import { markAsRead } from '../../../../client/action/notifications';
 import { useRoomsUnread } from '../../../state/hooks/unread';
 import { UseStateProvider } from '../../../components/UseStateProvider';
 import { LeaveSpacePrompt } from '../../../components/leave-space-prompt';
 import { copyToClipboard } from '../../../utils/dom';
 import { useClosedNavCategoriesAtom } from '../../../state/hooks/closedNavCategories';
 import { useStateEvent } from '../../../hooks/useStateEvent';
-import { Membership, StateEvent } from '../../../../types/matrix/room';
+import { StateEvent } from '../../../../types/matrix/room';
 import { stopPropagation } from '../../../utils/keyboard';
 import { getMatrixToRoom } from '../../../plugins/matrix-to';
 import { getViaServers } from '../../../plugins/via-servers';
@@ -78,12 +78,129 @@ import {
 } from '../../../hooks/useRoomsNotificationPreferences';
 import { useOpenSpaceSettings } from '../../../state/hooks/spaceSettings';
 import { useRoomNavigate } from '../../../hooks/useRoomNavigate';
-import { useRoomCreators } from '../../../hooks/useRoomCreators';
-import { useRoomPermissions } from '../../../hooks/useRoomPermissions';
-import { ContainerColor } from '../../../styles/ContainerColor.css';
-import { AsyncStatus, useAsyncCallback } from '../../../hooks/useAsyncCallback';
-import { BreakWord } from '../../../styles/Text.css';
-import { InviteUserPrompt } from '../../../components/invite-user-prompt';
+import { CallNavStatus } from '../../../features/room-nav/RoomCallNavStatus';
+import { getStateEvents } from '../../../utils/room';
+import { RoomNavUser } from '../../../features/room-nav/RoomNavUser';
+import { useStateEvents } from '../../../hooks/useStateEvents';
+
+/**
+ * Processes the raw hierarchy from useSpaceJoinedHierarchy into a flat list
+ * suitable for the virtualizer, including collapsible headers for text/voice rooms.
+ * Removes the top-level "Rooms" category header.
+ *
+ * @param hierarchy - The raw hierarchy data (array of { roomId: string }).
+ * @param mx - The Matrix client instance.
+ * @param spaceRoomId - The ID of the root space being viewed.
+ * @param closedCategories - The Set of currently closed category IDs.
+ * @returns An array of processed items for rendering.
+ */
+const processHierarchyForVirtualizer = (
+  hierarchy: { roomId: string }[],
+  mx: ReturnType<typeof useMatrixClient>,
+  spaceRoomId: string,
+  closedCategories: Set<string>
+): Array<{ type: string; key: string; [key: string]: any }> => {
+  const processed: Array<{ type: string; key: string; [key: string]: any }> = [];
+  type UserEntry = { type: 'user'; sender: string; key: string; room: Room };
+  let currentCategoryRooms: { text: Room[]; voice: Room[]; users: UserEntry[] } = {
+    text: [],
+    voice: [],
+    users: [],
+  };
+  let currentParentId: string = spaceRoomId;
+
+  const addCollectedRoomsToProcessed = (parentId: string) => {
+    const textCategoryId = `${parentId}_text_rooms`;
+    const voiceCategoryId = `${parentId}_call_rooms`;
+    const isTextClosed = closedCategories.has(textCategoryId);
+    const isCallClosed = closedCategories.has(voiceCategoryId);
+
+    if (currentCategoryRooms.text.length > 0) {
+      processed.push({
+        type: 'room_header',
+        title: 'Text Rooms',
+        categoryId: textCategoryId,
+        key: `${parentId}-text-header`,
+      });
+      if (!isTextClosed) {
+        currentCategoryRooms.text.forEach((room) =>
+          processed.push({ type: 'room', room, key: room.roomId })
+        );
+      }
+    }
+
+    if (currentCategoryRooms.voice.length > 0) {
+      processed.push({
+        type: 'room_header',
+        title: 'Call Rooms',
+        categoryId: voiceCategoryId,
+        key: `${parentId}-voice-header`,
+      });
+      if (!isCallClosed) {
+        currentCategoryRooms.voice.forEach((room) => {
+          processed.push({ type: 'room', room, key: room.roomId });
+
+          currentCategoryRooms.users.forEach((entry) => {
+            if (entry.room.roomId === room.roomId) {
+              processed.push(entry);
+            }
+          });
+        });
+      }
+    }
+
+    currentCategoryRooms = { text: [], voice: [], users: [] };
+  };
+
+  hierarchy.forEach((item) => {
+    const room = mx.getRoom(item.roomId);
+    if (!room) {
+      logger.warn(`processHierarchyForVirtualizer: Room not found for ID ${item.roomId}`);
+      return;
+    }
+
+    if (room.isSpaceRoom()) {
+      addCollectedRoomsToProcessed(currentParentId);
+      currentParentId = room.roomId;
+      if (room.roomId !== spaceRoomId) {
+        const spaceCategoryId = makeSpaceNavCategoryId(spaceRoomId, room.roomId);
+        processed.push({
+          type: 'category',
+          room,
+          categoryId: spaceCategoryId,
+          key: room.roomId,
+        });
+      }
+    } else if (room.isCallRoom()) {
+      currentCategoryRooms.voice.push(room);
+      getStateEvents(room, StateEvent.GroupCallMemberPrefix).forEach((stateEvent) => {
+        const rawEvent = stateEvent?.event;
+        const content = rawEvent?.content as { expires?: number } | undefined;
+        if (!content || Object.keys(content).length === 0) return;
+        if (typeof rawEvent?.origin_server_ts !== 'number') return;
+        if (typeof content.expires !== 'number') return;
+        if (!rawEvent.sender || !rawEvent.event_id) return;
+        if (rawEvent.origin_server_ts + content.expires > Date.now()) {
+          currentCategoryRooms.users.push({
+            type: 'user',
+            sender: rawEvent.sender,
+            key: rawEvent.event_id,
+            room,
+          });
+        }
+      });
+    } else if (!room.isCallRoom()) {
+      currentCategoryRooms.text.push(room);
+    } else {
+      logger.warn(`processHierarchyForVirtualizer: Room ${room.roomId} is neither text nor voice.`);
+      currentCategoryRooms.text.push(room);
+    }
+  });
+
+  addCollectedRoomsToProcessed(currentParentId);
+
+  return processed;
+};
 
 type SpaceMenuProps = {
   room: Room;
@@ -95,14 +212,10 @@ const SpaceMenu = forwardRef<HTMLDivElement, SpaceMenuProps>(({ room, requestClo
   const [developerTools] = useSetting(settingsAtom, 'developerTools');
   const roomToParents = useAtomValue(roomToParentsAtom);
   const powerLevels = usePowerLevels(room);
-  const creators = useRoomCreators(room);
-
-  const permissions = useRoomPermissions(creators, powerLevels);
-  const canInvite = permissions.action('invite', mx.getSafeUserId());
+  const { getPowerLevel, canDoAction } = usePowerLevelsAPI(powerLevels);
+  const canInvite = canDoAction('invite', getPowerLevel(mx.getUserId() ?? ''));
   const openSpaceSettings = useOpenSpaceSettings();
   const { navigateRoom } = useRoomNavigate();
-
-  const [invitePrompt, setInvitePrompt] = useState(false);
 
   const allChild = useSpaceChildren(
     allRoomsAtom,
@@ -124,7 +237,8 @@ const SpaceMenu = forwardRef<HTMLDivElement, SpaceMenuProps>(({ room, requestClo
   };
 
   const handleInvite = () => {
-    setInvitePrompt(true);
+    openInviteUser(room.roomId);
+    requestClose();
   };
 
   const handleRoomSettings = () => {
@@ -140,15 +254,6 @@ const SpaceMenu = forwardRef<HTMLDivElement, SpaceMenuProps>(({ room, requestClo
   return (
     <Menu ref={ref} style={{ maxWidth: toRem(160), width: '100vw' }}>
       <Box direction="Column" gap="100" style={{ padding: config.space.S100 }}>
-        {invitePrompt && room && (
-          <InviteUserPrompt
-            room={room}
-            requestClose={() => {
-              setInvitePrompt(false);
-              requestClose();
-            }}
-          />
-        )}
         <MenuItem
           onClick={handleMarkAsRead}
           size="300"
@@ -170,7 +275,6 @@ const SpaceMenu = forwardRef<HTMLDivElement, SpaceMenuProps>(({ room, requestClo
           size="300"
           after={<Icon size="100" src={Icons.UserPlus} />}
           radii="300"
-          aria-pressed={invitePrompt}
           disabled={!canInvite}
         >
           <Text style={{ flexGrow: 1 }} as="span" size="T300" truncate>
@@ -260,7 +364,6 @@ function SpaceHeader() {
       return cords;
     });
   };
-
   return (
     <>
       <PageNavHeader>
@@ -271,7 +374,7 @@ function SpaceHeader() {
             </Text>
             {joinRules?.join_rule !== JoinRule.Public && <Icon src={Icons.Lock} size="50" />}
           </Box>
-          <Box shrink="No">
+          <Box>
             <IconButton aria-pressed={!!menuAnchor} variant="Background" onClick={handleOpenMenu}>
               <Icon src={Icons.VerticalDots} size="200" />
             </IconButton>
@@ -296,81 +399,12 @@ function SpaceHeader() {
                 escapeDeactivates: stopPropagation,
               }}
             >
-              <SpaceMenu room={space} requestClose={() => setMenuAnchor(undefined)} />
+              {space && <SpaceMenu room={space} requestClose={() => setMenuAnchor(undefined)} />}
             </FocusTrap>
           }
         />
       )}
     </>
-  );
-}
-
-type SpaceTombstoneProps = { roomId: string; replacementRoomId: string };
-export function SpaceTombstone({ roomId, replacementRoomId }: SpaceTombstoneProps) {
-  const mx = useMatrixClient();
-  const { navigateSpace } = useRoomNavigate();
-
-  const [joinState, handleJoin] = useAsyncCallback(
-    useCallback(() => {
-      const currentRoom = mx.getRoom(roomId);
-      const via = currentRoom ? getViaServers(currentRoom) : [];
-      return mx.joinRoom(replacementRoomId, {
-        viaServers: via,
-      });
-    }, [mx, roomId, replacementRoomId])
-  );
-  const replacementRoom = mx.getRoom(replacementRoomId);
-
-  const handleOpen = () => {
-    if (replacementRoom) navigateSpace(replacementRoom.roomId);
-    if (joinState.status === AsyncStatus.Success) navigateSpace(joinState.data.roomId);
-  };
-
-  return (
-    <Box
-      style={{
-        padding: config.space.S200,
-        borderRadius: config.radii.R400,
-        borderWidth: config.borderWidth.B300,
-      }}
-      className={ContainerColor({ variant: 'Surface' })}
-      direction="Column"
-      gap="300"
-    >
-      <Box direction="Column" grow="Yes" gap="100">
-        <Text size="L400">Space Upgraded</Text>
-        <Text size="T200">This space has been replaced and is no longer active.</Text>
-        {joinState.status === AsyncStatus.Error && (
-          <Text className={BreakWord} style={{ color: color.Critical.Main }} size="T200">
-            {(joinState.error as any)?.message ?? 'Failed to join replacement space!'}
-          </Text>
-        )}
-      </Box>
-      <Box direction="Column" shrink="No">
-        {replacementRoom?.getMyMembership() === Membership.Join ||
-        joinState.status === AsyncStatus.Success ? (
-          <Button onClick={handleOpen} size="300" variant="Success" fill="Solid" radii="300">
-            <Text size="B300">Open New Space</Text>
-          </Button>
-        ) : (
-          <Button
-            onClick={handleJoin}
-            size="300"
-            variant="Primary"
-            fill="Solid"
-            radii="300"
-            before={
-              joinState.status === AsyncStatus.Loading && (
-                <Spinner size="100" variant="Primary" fill="Solid" />
-              )
-            }
-            disabled={joinState.status === AsyncStatus.Loading}
-          >
-            <Text size="B300">Join New Space</Text>
-          </Button>
-        )}
-      </Box>
-    </Box>
   );
 }
 
@@ -385,9 +419,6 @@ export function Space() {
   const allRooms = useAtomValue(allRoomsAtom);
   const allJoinedRooms = useMemo(() => new Set(allRooms), [allRooms]);
   const notificationPreferences = useRoomsNotificationPreferencesContext();
-
-  const tombstoneEvent = useStateEvent(space, StateEvent.RoomTombstone);
-
   const selectedRoomId = useSelectedRoom();
   const lobbySelected = useSpaceLobbySelected(spaceIdOrAlias);
   const searchSelected = useSpaceSearchSelected(spaceIdOrAlias);
@@ -395,7 +426,7 @@ export function Space() {
   const [closedCategories, setClosedCategories] = useAtom(useClosedNavCategoriesAtom());
 
   const getRoom = useCallback(
-    (rId: string) => {
+    (rId: string): Room | undefined => {
       if (allJoinedRooms.has(rId)) {
         return mx.getRoom(rId) ?? undefined;
       }
@@ -409,25 +440,42 @@ export function Space() {
     getRoom,
     useCallback(
       (parentId, roomId) => {
-        if (!closedCategories.has(makeNavCategoryId(space.roomId, parentId))) {
+        const parentSpaceCategoryId = makeSpaceNavCategoryId(space.roomId, parentId);
+        if (!closedCategories.has(parentSpaceCategoryId)) {
           return false;
         }
-        const showRoom = roomToUnread.has(roomId) || roomId === selectedRoomId;
-        if (showRoom) return false;
-        return true;
+        const showRoomAnyway = roomToUnread.has(roomId) || roomId === selectedRoomId;
+        return !showRoomAnyway;
       },
       [space.roomId, closedCategories, roomToUnread, selectedRoomId]
     ),
+
     useCallback(
-      (sId) => closedCategories.has(makeNavCategoryId(space.roomId, sId)),
+      (subCategoryId) => closedCategories.has(makeSpaceNavCategoryId(space.roomId, subCategoryId)),
       [closedCategories, space.roomId]
     )
   );
 
+  const callRooms = useMemo(
+    () =>
+      hierarchy
+        .map((item) => mx.getRoom(item.roomId))
+        .filter((room): room is Room => !!room && room.isCallRoom()),
+    [hierarchy, mx]
+  );
+
+  const updateTrigger = useStateEvents(callRooms, StateEvent.GroupCallMemberPrefix);
+
+  const processedHierarchy = useMemo(
+    () => processHierarchyForVirtualizer(hierarchy, mx, space.roomId, closedCategories),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [hierarchy, mx, space.roomId, closedCategories, updateTrigger]
+  );
+
   const virtualizer = useVirtualizer({
-    count: hierarchy.length,
+    count: processedHierarchy.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 0,
+    estimateSize: () => 32,
     overscan: 10,
   });
 
@@ -439,16 +487,13 @@ export function Space() {
     getSpaceRoomPath(spaceIdOrAlias, getCanonicalAliasOrRoomId(mx, roomId));
 
   return (
-    <PageNav>
+    <PageNav style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
       <SpaceHeader />
-      <PageNavContent scrollRef={scrollRef}>
+      <PageNavContent
+        scrollRef={scrollRef}
+        style={{ flexGrow: 1, overflowY: 'auto', overflowX: 'hidden' }}
+      >
         <Box direction="Column" gap="300">
-          {tombstoneEvent && (
-            <SpaceTombstone
-              roomId={space.roomId}
-              replacementRoomId={tombstoneEvent.getContent().replacement_room}
-            />
-          )}
           <NavCategory>
             <NavItem variant="Background" radii="400" aria-selected={lobbySelected}>
               <NavLink to={getSpaceLobbyPath(getCanonicalAliasOrRoomId(mx, space.roomId))}>
@@ -483,57 +528,93 @@ export function Space() {
               </NavLink>
             </NavItem>
           </NavCategory>
-          <NavCategory
-            style={{
-              height: virtualizer.getTotalSize(),
-              position: 'relative',
-            }}
-          >
-            {virtualizer.getVirtualItems().map((vItem) => {
-              const { roomId } = hierarchy[vItem.index] ?? {};
-              const room = mx.getRoom(roomId);
-              if (!room) return null;
-
-              if (room.isSpaceRoom()) {
-                const categoryId = makeNavCategoryId(space.roomId, roomId);
-
-                return (
-                  <VirtualTile
-                    virtualItem={vItem}
-                    key={vItem.index}
-                    ref={virtualizer.measureElement}
-                  >
-                    <div style={{ paddingTop: vItem.index === 0 ? undefined : config.space.S400 }}>
+        </Box>
+        <NavCategory
+          style={{
+            height: `${virtualizer.getTotalSize()}px`,
+            width: '100%',
+            position: 'relative',
+          }}
+        >
+          {virtualizer.getVirtualItems().map((vItem) => {
+            const item = processedHierarchy[vItem.index];
+            if (!item) return null;
+            const renderContent = () => {
+              switch (item.type) {
+                case 'category': {
+                  const { room, categoryId } = item;
+                  const { name } = room;
+                  const paddingTop = config?.space?.S400 ?? '1rem';
+                  return (
+                    <div style={{ paddingTop }}>
                       <NavCategoryHeader>
                         <RoomNavCategoryButton
                           data-category-id={categoryId}
                           onClick={handleCategoryClick}
                           closed={closedCategories.has(categoryId)}
                         >
-                          {roomId === space.roomId ? 'Rooms' : room?.name}
+                          {name}
                         </RoomNavCategoryButton>
                       </NavCategoryHeader>
                     </div>
-                  </VirtualTile>
-                );
+                  );
+                }
+                case 'room_header': {
+                  const { title, categoryId } = item;
+                  return (
+                    <Box>
+                      <NavCategoryHeader>
+                        <RoomNavCategoryButton
+                          data-category-id={categoryId}
+                          onClick={handleCategoryClick}
+                          closed={closedCategories.has(categoryId)}
+                        >
+                          {title}
+                        </RoomNavCategoryButton>
+                      </NavCategoryHeader>
+                    </Box>
+                  );
+                }
+                case 'room': {
+                  const { room } = item;
+                  return (
+                    <Box>
+                      <RoomNavItem
+                        room={room}
+                        selected={selectedRoomId === room.roomId}
+                        showAvatar={mDirects.has(room.roomId)}
+                        direct={mDirects.has(room.roomId)}
+                        linkPath={getToLink(room.roomId)}
+                        notificationMode={getRoomNotificationMode(
+                          notificationPreferences,
+                          room.roomId
+                        )}
+                      />
+                    </Box>
+                  );
+                }
+                case 'user': {
+                  const { sender, room } = item;
+                  return (
+                    <Box style={{ paddingLeft: config.space.S200 }}>
+                      <RoomNavUser room={room} space={space} sender={sender} />
+                    </Box>
+                  );
+                }
+                default:
+                  return null;
               }
+            };
 
-              return (
-                <VirtualTile virtualItem={vItem} key={vItem.index} ref={virtualizer.measureElement}>
-                  <RoomNavItem
-                    room={room}
-                    selected={selectedRoomId === roomId}
-                    showAvatar={mDirects.has(roomId)}
-                    direct={mDirects.has(roomId)}
-                    linkPath={getToLink(roomId)}
-                    notificationMode={getRoomNotificationMode(notificationPreferences, room.roomId)}
-                  />
-                </VirtualTile>
-              );
-            })}
-          </NavCategory>
-        </Box>
+            return (
+              <VirtualTile virtualItem={vItem} key={item.key} ref={virtualizer.measureElement}>
+                {renderContent()}
+              </VirtualTile>
+            );
+          })}
+        </NavCategory>
       </PageNavContent>
+      <CallNavStatus />
     </PageNav>
   );
 }

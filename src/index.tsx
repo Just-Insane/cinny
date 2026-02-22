@@ -16,23 +16,23 @@ import App from './app/pages/App';
 // import i18n (needs to be bundled ;))
 import './app/i18n';
 import { pushSessionToSW } from './sw-session';
-import { getFallbackSession } from './app/state/sessions';
+import { getSecret } from './client/state/auth';
 
 document.body.classList.add(configClass, varsClass);
 
 // Register Service Worker
 if ('serviceWorker' in navigator) {
-  const swUrl =
-    import.meta.env.MODE === 'production'
-      ? `${trimTrailingSlash(import.meta.env.BASE_URL)}/sw.js`
-      : `/dev-sw.js?dev-sw`;
+  const baseUrl = trimTrailingSlash(import.meta.env.BASE_URL || '/');
+  const swUrl = import.meta.env.MODE === 'production' ? `${baseUrl}/sw.js` : `${baseUrl}/dev-sw.js?dev-sw`;
+  const swType: RegistrationOptions['type'] =
+    import.meta.env.MODE === 'production' ? 'classic' : 'module';
 
   const sendSessionToSW = () => {
-    const session = getFallbackSession();
+    const session = getSecret();
     pushSessionToSW(session?.baseUrl, session?.accessToken);
   };
 
-  navigator.serviceWorker.register(swUrl).then(sendSessionToSW);
+  navigator.serviceWorker.register(swUrl, { type: swType }).then(sendSessionToSW);
   navigator.serviceWorker.ready.then(sendSessionToSW);
 
   navigator.serviceWorker.addEventListener('message', (ev) => {

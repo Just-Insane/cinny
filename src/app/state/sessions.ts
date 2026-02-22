@@ -1,9 +1,8 @@
-// import { atom } from 'jotai';
-// import {
-//   atomWithLocalStorage,
-//   getLocalStorageItem,
-//   setLocalStorageItem,
-// } from './utils/atomWithLocalStorage';
+import {
+  atomWithLocalStorage,
+  getLocalStorageItem,
+  setLocalStorageItem,
+} from './utils/atomWithLocalStorage';
 
 export type Session = {
   baseUrl: string;
@@ -24,29 +23,18 @@ export type SessionStoreName = {
 /**
  * Migration code for old session
  */
-// const FALLBACK_STORE_NAME: SessionStoreName = {
-//   sync: 'web-sync-store',
-//   crypto: 'crypto-store',
-// } as const;
+const FALLBACK_STORE_NAME: SessionStoreName = {
+  sync: 'web-sync-store',
+  crypto: 'crypto-store',
+} as const;
 
-export function setFallbackSession(
-  accessToken: string,
-  deviceId: string,
-  userId: string,
-  baseUrl: string
-) {
-  localStorage.setItem('cinny_access_token', accessToken);
-  localStorage.setItem('cinny_device_id', deviceId);
-  localStorage.setItem('cinny_user_id', userId);
-  localStorage.setItem('cinny_hs_base_url', baseUrl);
-}
-export const removeFallbackSession = () => {
+const removeFallbackSession = () => {
   localStorage.removeItem('cinny_hs_base_url');
   localStorage.removeItem('cinny_user_id');
   localStorage.removeItem('cinny_device_id');
   localStorage.removeItem('cinny_access_token');
 };
-export const getFallbackSession = (): Session | undefined => {
+const getFallbackSession = (): Session | undefined => {
   const baseUrl = localStorage.getItem('cinny_hs_base_url');
   const userId = localStorage.getItem('cinny_user_id');
   const deviceId = localStorage.getItem('cinny_device_id');
@@ -70,71 +58,43 @@ export const getFallbackSession = (): Session | undefined => {
  * End of migration code for old session
  */
 
-// export const getSessionStoreName = (session: Session): SessionStoreName => {
-//   if (session.fallbackSdkStores) {
-//     return FALLBACK_STORE_NAME;
-//   }
+export const getSessionStoreName = (session: Session): SessionStoreName => {
+  if (session.fallbackSdkStores) {
+    return FALLBACK_STORE_NAME;
+  }
 
-//   return {
-//     sync: `sync${session.userId}`,
-//     crypto: `crypto${session.userId}`,
-//   };
-// };
+  return {
+    sync: `sync${session.userId}`,
+    crypto: `crypto${session.userId}`,
+  };
+};
 
-// export const MATRIX_SESSIONS_KEY = 'matrixSessions';
-// const baseSessionsAtom = atomWithLocalStorage<Sessions>(
-//   MATRIX_SESSIONS_KEY,
-//   (key) => {
-//     const defaultSessions: Sessions = [];
-//     const sessions = getLocalStorageItem(key, defaultSessions);
+export const MATRIX_SESSIONS_KEY = 'matrixSessions';
+export const sessionsAtom = atomWithLocalStorage<Sessions>(
+  MATRIX_SESSIONS_KEY,
+  (key) => {
+    const fallbackSession = getFallbackSession();
+    if (fallbackSession) {
+      console.warn('Migrating from a fallback session...');
+      const newSessions: Sessions = [fallbackSession];
+      setLocalStorageItem(key, newSessions);
+      removeFallbackSession();
+      return newSessions;
+    }
 
-//     // Before multi account support session was stored
-//     // as multiple item in local storage.
-//     // So we need these migration code.
-//     const fallbackSession = getFallbackSession();
-//     if (fallbackSession) {
-//       removeFallbackSession();
-//       sessions.push(fallbackSession);
-//       setLocalStorageItem(key, sessions);
-//     }
-//     return sessions;
-//   },
-//   (key, value) => {
-//     setLocalStorageItem(key, value);
-//   }
-// );
+    return getLocalStorageItem(key, []);
+  },
+  (key, value) => {
+    setLocalStorageItem(key, value);
+  }
+);
 
-// export type SessionsAction =
-//   | {
-//       type: 'PUT';
-//       session: Session;
-//     }
-//   | {
-//       type: 'DELETE';
-//       session: Session;
-//     };
-
-// export const sessionsAtom = atom<Sessions, [SessionsAction], undefined>(
-//   (get) => get(baseSessionsAtom),
-//   (get, set, action) => {
-//     if (action.type === 'PUT') {
-//       const sessions = [...get(baseSessionsAtom)];
-//       const sessionIndex = sessions.findIndex(
-//         (session) => session.userId === action.session.userId
-//       );
-//       if (sessionIndex === -1) {
-//         sessions.push(action.session);
-//       } else {
-//         sessions.splice(sessionIndex, 1, action.session);
-//       }
-//       set(baseSessionsAtom, sessions);
-//       return;
-//     }
-//     if (action.type === 'DELETE') {
-//       const sessions = get(baseSessionsAtom).filter(
-//         (session) => session.userId !== action.session.userId
-//       );
-//       set(baseSessionsAtom, sessions);
-//     }
-//   }
-// );
+export type SessionsAction =
+  | {
+      type: 'PUT';
+      session: Session;
+    }
+  | {
+      type: 'DELETE';
+      session: Session;
+    };
