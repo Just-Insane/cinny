@@ -13,6 +13,9 @@ import { useKeyDown } from '../../hooks/useKeyDown';
 import { markAsRead } from '../../utils/notifications';
 import { useMatrixClient } from '../../hooks/useMatrixClient';
 import { useRoomMembers } from '../../hooks/useRoomMembers';
+import { CallView } from '../call/CallView';
+import { RoomViewHeader } from './RoomViewHeader';
+import { useCallState } from '../../pages/client/call/CallProvider';
 
 export function Room() {
   const { eventId } = useParams();
@@ -24,6 +27,7 @@ export function Room() {
   const screenSize = useScreenSizeContext();
   const powerLevels = usePowerLevels(room);
   const members = useRoomMembers(mx, room.roomId);
+  const { isChatOpen } = useCallState();
 
   useKeyDown(
     window,
@@ -40,7 +44,16 @@ export function Room() {
   return (
     <PowerLevelsContextProvider value={powerLevels}>
       <Box grow="Yes">
-        <RoomView room={room} eventId={eventId} />
+        <Box grow="Yes" direction="Column">
+          <RoomViewHeader />
+          <Box grow="Yes">
+            <CallView room={room} />
+            {room.isCallRoom() && screenSize === ScreenSize.Desktop && isChatOpen && (
+              <Line variant="Background" direction="Vertical" size="300" />
+            )}
+            {(!room.isCallRoom() || isChatOpen) && <RoomView room={room} eventId={eventId} />}
+          </Box>
+        </Box>
         {screenSize === ScreenSize.Desktop && isDrawer && (
           <>
             <Line variant="Background" direction="Vertical" size="300" />

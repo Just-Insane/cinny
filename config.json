@@ -8,6 +8,7 @@
     "xmr.se"
   ],
   "allowCustomHomeservers": true,
+  "elementCallUrl": null,
 
   "featuredCommunities": {
     "openAsDefault": false,

@@ -84,6 +84,8 @@ import { ContainerColor } from '../../../styles/ContainerColor.css';
 import { AsyncStatus, useAsyncCallback } from '../../../hooks/useAsyncCallback';
 import { BreakWord } from '../../../styles/Text.css';
 import { InviteUserPrompt } from '../../../components/invite-user-prompt';
+import { CallNavStatus } from '../../../features/room-nav/RoomCallNavStatus';
+import { useCallState } from '../call/CallProvider';
 
 type SpaceMenuProps = {
   room: Room;
@@ -387,15 +389,15 @@ export function Space() {
   const notificationPreferences = useRoomsNotificationPreferencesContext();
 
   const tombstoneEvent = useStateEvent(space, StateEvent.RoomTombstone);
-
   const selectedRoomId = useSelectedRoom();
   const lobbySelected = useSpaceLobbySelected(spaceIdOrAlias);
   const searchSelected = useSpaceSearchSelected(spaceIdOrAlias);
+  const { isActiveCallReady, activeCallRoomId } = useCallState();
 
   const [closedCategories, setClosedCategories] = useAtom(useClosedNavCategoriesAtom());
 
   const getRoom = useCallback(
-    (rId: string) => {
+    (rId: string): Room | undefined => {
       if (allJoinedRooms.has(rId)) {
         return mx.getRoom(rId) ?? undefined;
       }
@@ -412,11 +414,20 @@ export function Space() {
         if (!closedCategories.has(makeNavCategoryId(space.roomId, parentId))) {
           return false;
         }
-        const showRoom = roomToUnread.has(roomId) || roomId === selectedRoomId;
-        if (showRoom) return false;
-        return true;
+        const showRoomAnyway =
+          roomToUnread.has(roomId) ||
+          roomId === selectedRoomId ||
+          (isActiveCallReady && activeCallRoomId === roomId);
+        return !showRoomAnyway;
       },
-      [space.roomId, closedCategories, roomToUnread, selectedRoomId]
+      [
+        space.roomId,
+        closedCategories,
+        roomToUnread,
+        selectedRoomId,
+        activeCallRoomId,
+        isActiveCallReady,
+      ]
     ),
     useCallback(
       (sId) => closedCategories.has(makeNavCategoryId(space.roomId, sId)),
@@ -427,7 +438,7 @@ export function Space() {
   const virtualizer = useVirtualizer({
     count: hierarchy.length,
     getScrollElement: () => scrollRef.current,
-    estimateSize: () => 0,
+    estimateSize: () => 32,
     overscan: 10,
   });
 
@@ -534,6 +545,7 @@ export function Space() {
           </NavCategory>
         </Box>
       </PageNavContent>
+      <CallNavStatus />
     </PageNav>
   );
 }

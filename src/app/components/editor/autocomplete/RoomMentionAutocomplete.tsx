@@ -174,7 +174,7 @@ export function RoomMentionAutocomplete({
                       )}
                     />
                   ) : (
-                    <RoomIcon size="100" joinRule={room.getJoinRule()} space={room.isSpaceRoom()} />
+                    <RoomIcon size="100" joinRule={room.getJoinRule()} roomType={room.getType()} />
                   )}
                 </Avatar>
               }

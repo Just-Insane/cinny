@@ -1,5 +1,5 @@
 import React, { useCallback, useRef } from 'react';
-import { Box, Text, config } from 'folds';
+import { Box, Text, config, toRem } from 'folds';
 import { EventType, Room } from 'matrix-js-sdk';
 import { ReactEditor } from 'slate-react';
 import { isKeyHotkey } from 'is-hotkey';
@@ -15,13 +15,13 @@ import { RoomTombstone } from './RoomTombstone';
 import { RoomInput } from './RoomInput';
 import { RoomViewFollowing, RoomViewFollowingPlaceholder } from './RoomViewFollowing';
 import { Page } from '../../components/page';
-import { RoomViewHeader } from './RoomViewHeader';
 import { useKeyDown } from '../../hooks/useKeyDown';
 import { editableActiveElement } from '../../utils/dom';
 import { settingsAtom } from '../../state/settings';
 import { useSetting } from '../../state/hooks/settings';
 import { useRoomPermissions } from '../../hooks/useRoomPermissions';
 import { useRoomCreators } from '../../hooks/useRoomCreators';
+import { ScreenSize, useScreenSizeContext } from '../../hooks/useScreenSize';
 
 const FN_KEYS_REGEX = /^F\d+$/;
 const shouldFocusMessageField = (evt: KeyboardEvent): boolean => {
@@ -30,10 +30,8 @@ const shouldFocusMessageField = (evt: KeyboardEvent): boolean => {
     return false;
   }
 
-  // do not focus on F keys
   if (FN_KEYS_REGEX.test(code)) return false;
 
-  // do not focus on numlock/scroll lock
   if (
     code.startsWith('OS') ||
     code.startsWith('Meta') ||
@@ -61,6 +59,7 @@ export function RoomView({ room, eventId }: { room: Room; eventId?: string }) {
   const roomViewRef = useRef<HTMLDivElement>(null);
 
   const [hideActivity] = useSetting(settingsAtom, 'hideActivity');
+  const screenSize = useScreenSizeContext();
 
   const { roomId } = room;
   const editor = useEditor();
@@ -92,8 +91,14 @@ export function RoomView({ room, eventId }: { room: Room; eventId?: string }) {
   );
 
   return (
-    <Page ref={roomViewRef}>
-      <RoomViewHeader />
+    <Page
+      ref={roomViewRef}
+      style={
+        room.isCallRoom() && screenSize === ScreenSize.Desktop
+          ? { maxWidth: toRem(399), minWidth: toRem(399) }
+          : {}
+      }
+    >
       <Box grow="Yes" direction="Column">
         <RoomTimeline
           key={roomId}
