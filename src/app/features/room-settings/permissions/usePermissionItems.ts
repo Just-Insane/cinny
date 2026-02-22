@@ -193,6 +193,13 @@ export const usePermissionGroups = (isCallRoom: boolean): PermissionGroup[] => {
         {
           location: {
             state: true,
+            key: StateEvent.PoniesRoomEmotes,
+          },
+          name: 'Manage Emojis & Stickers',
+        },
+        {
+          location: {
+            state: true,
             key: StateEvent.RoomServerAcl,
           },
           name: 'Change Server ACLs',
