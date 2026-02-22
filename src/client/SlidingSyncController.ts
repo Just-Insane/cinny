@@ -42,7 +42,13 @@ const BASE_STATE_REQUIREMENTS = [
     ["im.ponies.user_emotes", MSC3575_WILDCARD],
     ["m.image_pack", MSC3575_WILDCARD],
     ["m.image_pack.aggregate", MSC3575_WILDCARD],
+
+    // Just throw these in I guess
+    ["in.cinny.room.power_level_tags", MSC3575_WILDCARD],
+    ["org.matrix.msc3381.poll.response", MSC3575_WILDCARD],
+    ["com.famedly.marked_unread", MSC3575_WILDCARD]
 ];
+
 
 const SUBSCRIPTION_BASE = {
     timeline_limit: 50,
