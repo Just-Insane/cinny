@@ -6,16 +6,19 @@ declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST?: unknown[] };
 
 const DEFAULT_NOTIFICATION_ICON = '/public/res/apple/apple-touch-icon-180x180.png';
 const DEFAULT_NOTIFICATION_BADGE = '/public/res/apple/apple-touch-icon-72x72.png';
+const PUSH_EVENT_LOOKUP_TIMEOUT_MS = 2500;
 
 type SessionInfo = {
   accessToken: string;
   baseUrl: string;
+  userId: string;
 };
 
 /**
  * Store session per client (tab)
  */
 const sessions = new Map<string, SessionInfo>();
+let latestSession: SessionInfo | undefined;
 
 const clientToResolve = new Map<string, (value: SessionInfo | undefined) => void>();
 const clientToSessionPromise = new Map<string, Promise<SessionInfo | undefined>>();
@@ -33,9 +36,15 @@ async function cleanupDeadClients() {
   });
 }
 
-function setSession(clientId: string, accessToken: any, baseUrl: any) {
-  if (typeof accessToken === 'string' && typeof baseUrl === 'string') {
-    sessions.set(clientId, { accessToken, baseUrl });
+function setSession(clientId: string, accessToken: any, baseUrl: any, userId: any) {
+  if (
+    typeof accessToken === 'string' &&
+    typeof baseUrl === 'string' &&
+    typeof userId === 'string'
+  ) {
+    const session = { accessToken, baseUrl, userId };
+    sessions.set(clientId, session);
+    latestSession = session;
   } else {
     // Logout or invalid session
     sessions.delete(clientId);
@@ -100,7 +109,7 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
   const client = event.source as Client | null;
   if (!client) return;
 
-  const { type, accessToken, baseUrl, token, url, pusherData } = event.data || {};
+  const { type, accessToken, baseUrl, userId, token, url, pusherData } = event.data || {};
 
   if (type === 'togglePush') {
     if (!token || !url) return;
@@ -116,7 +125,7 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
   }
 
   if (type === 'setSession') {
-    setSession(client.id, accessToken, baseUrl);
+    setSession(client.id, accessToken, baseUrl, userId);
     cleanupDeadClients();
   }
 });
@@ -146,6 +155,37 @@ function fetchConfig(token: string): RequestInit {
     },
     cache: 'default',
   };
+}
+
+function getAnySession(): SessionInfo | undefined {
+  if (latestSession) return latestSession;
+  return sessions.values().next().value;
+}
+
+async function fetchEventSender(
+  session: SessionInfo,
+  roomId: string,
+  eventId: string
+): Promise<string | undefined> {
+  const url = new URL(
+    `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/event/${encodeURIComponent(eventId)}`,
+    session.baseUrl
+  );
+  try {
+    const response = await fetch(url, fetchConfig(session.accessToken));
+    if (!response.ok) return undefined;
+    const data = (await response.json()) as { sender?: string };
+    return data.sender;
+  } catch {
+    return undefined;
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number): Promise<T | undefined> {
+  const timeout = new Promise<undefined>((resolve) => {
+    setTimeout(() => resolve(undefined), timeoutMs);
+  });
+  return Promise.race([promise, timeout]);
 }
 
 self.addEventListener('fetch', (event: FetchEvent) => {
@@ -194,6 +234,22 @@ const onPushNotification = async (event: PushEvent) => {
   if (event.data) {
     try {
       const pushData = event.data.json();
+      const session = getAnySession();
+      const sender = pushData.sender ?? pushData.data?.sender ?? undefined;
+      if (sender && session?.userId && sender === session.userId) {
+        return;
+      }
+      const roomId = pushData.room_id ?? pushData.data?.room_id;
+      const eventId = pushData.event_id ?? pushData.data?.event_id;
+      if (session && roomId && eventId) {
+        const senderFromEvent = await withTimeout(
+          fetchEventSender(session, roomId, eventId),
+          PUSH_EVENT_LOOKUP_TIMEOUT_MS
+        );
+        if (senderFromEvent && senderFromEvent === session.userId) {
+          return;
+        }
+      }
       title = pushData.title || title;
       options.body = options.body ?? pushData.data?.toString();
       options.icon = pushData.icon || options.icon;

@@ -7,7 +7,7 @@ import { pushSessionToSW } from '../sw-session';
 import { Session, getSessionStoreName } from '../app/state/sessions';
 
 export const initClient = async (session: Session): Promise<MatrixClient> => {
-  pushSessionToSW(session.baseUrl, session.accessToken);
+  pushSessionToSW(session.baseUrl, session.accessToken, session.userId);
   const storeName = getSessionStoreName(session);
   const indexedDBStore = new IndexedDBStore({
     indexedDB: global.indexedDB,

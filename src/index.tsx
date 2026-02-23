@@ -29,7 +29,7 @@ if ('serviceWorker' in navigator) {
 
   const sendSessionToSW = () => {
     const session = getSecret();
-    pushSessionToSW(session?.baseUrl, session?.accessToken);
+    pushSessionToSW(session?.baseUrl, session?.accessToken, session?.userId);
   };
 
   navigator.serviceWorker.register(swUrl, { type: swType }).then(sendSessionToSW);
