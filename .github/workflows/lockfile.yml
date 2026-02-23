@@ -15,7 +15,15 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4.2.0
+      - name: Detect Lockfile Version
+        id: lockfile
+        run: |
+          node -e "const fs=require('fs'); const lock=JSON.parse(fs.readFileSync('package-lock.json','utf8')); console.log(`lockfileVersion=${lock.lockfileVersion}`);" >> \"$GITHUB_OUTPUT\"
+      - name: Skip Lockfile Check for v3
+        if: ${{ steps.lockfile.outputs.lockfileVersion == '3' }}
+        run: echo "package-lock.json v3 detected; skipping npm-lockfile-changes action."
       - name: NPM Lockfile Changes
+        if: ${{ steps.lockfile.outputs.lockfileVersion != '3' }}
         uses: codepunkt/npm-lockfile-changes@b40543471c36394409466fdb277a73a0856d7891
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
