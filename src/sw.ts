@@ -241,23 +241,30 @@ function resolveNotificationBody(pushData: any): string | undefined {
   return undefined;
 }
 
-function resolveNotificationTitle(pushData: any, fallback: string): string {
-  if (typeof pushData?.title === 'string' && pushData.title.trim()) return pushData.title;
+function resolveSenderName(pushData: any): string | undefined {
   const senderName =
     pushData?.sender_display_name ??
     pushData?.data?.sender_display_name ??
     pushData?.sender ??
     pushData?.data?.sender;
   if (typeof senderName === 'string' && senderName.trim()) return senderName;
-  const roomName = pushData?.data?.room_name ?? pushData?.room_name;
-  if (typeof roomName === 'string' && roomName.trim()) return roomName;
-  return fallback;
+  return undefined;
 }
 
 function resolveRoomName(pushData: any): string | undefined {
   const roomName = pushData?.data?.room_name ?? pushData?.room_name;
   if (typeof roomName === 'string' && roomName.trim()) return roomName;
   return undefined;
+}
+
+function resolveNotificationTitle(pushData: any, fallback: string): string {
+  if (typeof pushData?.title === 'string' && pushData.title.trim()) return pushData.title;
+  const senderName = resolveSenderName(pushData);
+  const roomName = resolveRoomName(pushData);
+  if (senderName && roomName) return `${senderName} — ${roomName}`;
+  if (senderName) return senderName;
+  if (roomName) return roomName;
+  return fallback;
 }
 
 function buildAppUrl(path: string, session?: SessionInfo): string {
@@ -377,12 +384,9 @@ const onPushNotification = async (event: PushEvent) => {
       }
       title = resolveNotificationTitle(pushData, title);
       if (session?.showPushNotificationContent) {
-        const body = resolveNotificationBody(pushData) ?? options.body;
-        const roomName = resolveRoomName(pushData);
-        options.body = roomName ? `${roomName}\n${body}` : body;
+        options.body = resolveNotificationBody(pushData) ?? options.body;
       } else {
-        const roomName = resolveRoomName(pushData);
-        options.body = roomName ? `${roomName}\nYou have a new message!` : 'You have a new message!';
+        options.body = 'You have a new message!';
       }
       options.icon = pushData.icon || options.icon;
       options.badge = pushData.badge || options.badge;
