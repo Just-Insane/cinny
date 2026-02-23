@@ -1,26 +1,39 @@
-name: Sync Fork with Upstream
+name: Sync Fork
+
 on:
+  push:
+    branches:
+      - 'sync-fork'
   schedule:
-    - cron: '0 0 * * *' # Runs daily at midnight UTC
-  workflow_dispatch: # Allows manual triggering
+    - cron: '0 0 * * *' #every 24h
+  workflow_dispatch:
+
+permissions:
+  contents: write
 
 jobs:
   sync:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Forked Repository
-        uses: actions/checkout@v3
+      - name: Checkout your forked repository
+        uses: actions/checkout@v4
         with:
+          repository: <your github username>/<your forked repo>
           token: ${{ secrets.CLA_PAT }}
+          fetch-depth: 0
 
-      - name: Add Upstream Remote
-        run: git remote add upstream https://github.com/cinnyapp/cinny.git
-
-      - name: Fetch Upstream Changes
-        run: git fetch upstream
-
-      - name: Merge Changes and Push
+      - name: Add upstream repository
         run: |
-          git checkout dev
+          git remote add upstream https://github.com/cinnyapp/cinny.git
+          git fetch upstream
+
+      - name: Sync with upstream/dev
+        run: |
+          git fetch upstream dev
+          git checkout -B dev origin/main
           git merge upstream/dev
-          git push origin dev
+          git push origin main
+
+      - name: Clean up
+        run: |
+          git remote remove upstream
