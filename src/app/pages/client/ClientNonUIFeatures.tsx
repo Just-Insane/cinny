@@ -1,7 +1,7 @@
 import { useAtomValue } from 'jotai';
 import React, { ReactNode, useCallback, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { RoomEvent, RoomEventHandlerMap } from 'matrix-js-sdk';
+import { Room, RoomEvent, RoomEventHandlerMap } from 'matrix-js-sdk';
 import { roomToUnreadAtom, unreadEqual, unreadInfoToUnread } from '../../state/room/roomToUnread';
 import LogoSVG from '../../../../public/res/svg/cinny.svg';
 import LogoUnreadSVG from '../../../../public/res/svg/cinny-unread.svg';
@@ -99,10 +99,28 @@ function InviteNotifications() {
 
   const notify = useCallback(
     (count: number) => {
-      const noti = new window.Notification('Invitation', {
+      const userId = mx.getSafeUserId();
+      const inviteRooms = invites
+        .map((roomId) => mx.getRoom(roomId))
+        .filter((room): room is Room => !!room);
+      const latestInvite = inviteRooms
+        .map((room) => {
+          const memberEvent = room.getMember(userId)?.events.member;
+          const ts = memberEvent?.getTs() ?? 0;
+          const senderId = memberEvent?.getSender();
+          const senderName = senderId
+            ? getMemberDisplayName(room, senderId) ?? getMxIdLocalPart(senderId) ?? senderId
+            : 'Unknown';
+          const roomName = room.name ?? room.getCanonicalAlias() ?? room.roomId;
+          return { roomName, senderName, ts };
+        })
+        .sort((a, b) => b.ts - a.ts)[0];
+      const senderName = latestInvite?.senderName ?? 'Invitation';
+      const roomName = latestInvite?.roomName ?? 'Unknown';
+      const noti = new window.Notification(`${senderName} — ${roomName}`, {
         icon: LogoSVG,
         badge: LogoSVG,
-        body: `You have ${count} new invitation request.`,
+        body: `You have ${count} new invitation${count > 1 ? 's' : ''}.`,
         silent: true,
       });
 
@@ -111,7 +129,7 @@ function InviteNotifications() {
         noti.close();
       };
     },
-    [navigate]
+    [invites, mx, navigate]
   );
 
   const playSound = useCallback(() => {

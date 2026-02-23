@@ -25,6 +25,8 @@ const sessions = new Map<string, SessionInfo>();
 let latestSession: SessionInfo | undefined;
 const directRoomCache = new Map<string, { value: boolean; timestamp: number }>();
 const DIRECT_ROOM_CACHE_TTL_MS = 5 * 60 * 1000;
+const parentRoomCache = new Map<string, { value: string | null; timestamp: number }>();
+const PARENT_ROOM_CACHE_TTL_MS = 5 * 60 * 1000;
 
 const clientToResolve = new Map<string, (value: SessionInfo | undefined) => void>();
 const clientToSessionPromise = new Map<string, Promise<SessionInfo | undefined>>();
@@ -243,11 +245,44 @@ async function isDirectRoom(session: SessionInfo, roomId: string): Promise<boole
   }
 }
 
+async function fetchRoomParent(session: SessionInfo, roomId: string): Promise<string | null> {
+  const cached = parentRoomCache.get(roomId);
+  const now = Date.now();
+  if (cached && now - cached.timestamp < PARENT_ROOM_CACHE_TTL_MS) {
+    return cached.value;
+  }
+
+  const url = new URL(
+    `/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/state/m.space.parent`,
+    session.baseUrl
+  );
+  try {
+    const response = await fetch(url, fetchConfig(session.accessToken));
+    if (!response.ok) return null;
+    const data = await response.json();
+    const parentEvent = Array.isArray(data) ? data[0] : data;
+    const parentRoomId = parentEvent?.state_key ?? null;
+    parentRoomCache.set(roomId, { value: parentRoomId, timestamp: now });
+    return parentRoomId;
+  } catch {
+    return null;
+  }
+}
+
 function resolveNotificationBody(pushData: any): string | undefined {
   if (typeof pushData?.body === 'string' && pushData.body.trim()) return pushData.body;
+  const contentBody = pushData?.content?.body;
+  if (typeof contentBody === 'string' && contentBody.trim()) return contentBody;
   const dataBody = pushData?.data?.content?.body ?? pushData?.data?.body;
   if (typeof dataBody === 'string' && dataBody.trim()) return dataBody;
   return undefined;
+}
+
+function isInviteEvent(pushData: any): boolean {
+  const type = pushData?.type ?? pushData?.data?.type;
+  const membership =
+    pushData?.data?.content?.membership ?? pushData?.content?.membership ?? undefined;
+  return type === 'm.room.member' && membership === 'invite';
 }
 
 function resolveSenderName(pushData: any): string | undefined {
@@ -314,7 +349,25 @@ async function resolveNotificationUrl(
         typeof eventId === 'string' && eventId.trim()
           ? `/${encodeURIComponent(eventId)}`
           : '';
-      return buildAppUrl(`direct/${encodedRoomId}${encodedEventId}`, session);
+      return buildAppUrl(`direct/${encodedRoomId}${encodedEventId}/`, session);
+    }
+    if (session) {
+      const parentRoomId = await withTimeout(
+        fetchRoomParent(session, roomId),
+        PUSH_EVENT_LOOKUP_TIMEOUT_MS
+      );
+      if (parentRoomId) {
+        const encodedParentId = encodeURIComponent(parentRoomId);
+        const encodedRoomId = encodeURIComponent(roomId);
+        const encodedEventId =
+          typeof eventId === 'string' && eventId.trim()
+            ? `/${encodeURIComponent(eventId)}`
+            : '';
+        return buildAppUrl(
+          `${encodedParentId}/${encodedRoomId}${encodedEventId}/`,
+          session
+        );
+      }
     }
     if (typeof url === 'string' && url.trim()) return url;
     const encodedRoomId = encodeURIComponent(roomId);
@@ -322,7 +375,7 @@ async function resolveNotificationUrl(
       typeof eventId === 'string' && eventId.trim()
         ? `/${encodeURIComponent(eventId)}`
         : '';
-    return buildAppUrl(`${HOME_PATH}${encodedRoomId}${encodedEventId}`, session);
+    return buildAppUrl(`${HOME_PATH}${encodedRoomId}${encodedEventId}/`, session);
   }
 
   if (typeof url === 'string' && url.trim()) return url;
@@ -402,10 +455,12 @@ const onPushNotification = async (event: PushEvent) => {
         }
       }
       title = resolveNotificationTitle(pushData, title);
-      if (session?.showPushNotificationContent) {
+      if (session?.showPushNotificationContent && !isInviteEvent(pushData)) {
         options.body = resolveNotificationBody(pushData) ?? options.body;
       } else {
-        options.body = 'You have a new message!';
+        options.body = isInviteEvent(pushData)
+          ? 'You have a new invitation!'
+          : 'You have a new message!';
       }
       options.icon = pushData.icon || options.icon;
       options.badge = pushData.badge || options.badge;
