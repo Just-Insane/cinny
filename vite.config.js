@@ -75,6 +75,15 @@ export default defineConfig({
   appType: 'spa',
   publicDir: false,
   base: buildConfig.base,
+  // Sourcemaps are memory-heavy in CI/Docker builds. Enable via VITE_SOURCEMAP=true when needed.
+  build: {
+    outDir: 'dist',
+    sourcemap: process.env.VITE_SOURCEMAP === 'true',
+    copyPublicDir: false,
+    rollupOptions: {
+      plugins: [inject({ Buffer: ['buffer', 'Buffer'] })],
+    },
+  },
   resolve: {
     alias: [
       {
@@ -130,14 +139,6 @@ export default defineConfig({
           buffer: true,
         }),
       ],
-    },
-  },
-  build: {
-    outDir: 'dist',
-    sourcemap: true,
-    copyPublicDir: false,
-    rollupOptions: {
-      plugins: [inject({ Buffer: ['buffer', 'Buffer'] })],
     },
   },
 });
