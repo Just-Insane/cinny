@@ -18,7 +18,7 @@ jobs:
       - name: Detect Lockfile Version
         id: lockfile
         run: |
-          node -e "const fs=require('fs'); const lock=JSON.parse(fs.readFileSync('package-lock.json','utf8')); console.log(`lockfileVersion=${lock.lockfileVersion}`);" >> \"$GITHUB_OUTPUT\"
+          node -e "const fs=require('fs'); const lock=JSON.parse(fs.readFileSync('package-lock.json','utf8')); console.log('lockfileVersion=' + lock.lockfileVersion);" >> $GITHUB_OUTPUT
       - name: Skip Lockfile Check for v3
         if: ${{ steps.lockfile.outputs.lockfileVersion == '3' }}
         run: echo "package-lock.json v3 detected; skipping npm-lockfile-changes action."
