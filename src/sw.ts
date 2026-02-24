@@ -279,10 +279,7 @@ function buildAppUrlWithQuery(
   return url.toString();
 }
 
-async function resolveNotificationUrl(
-  pushData: any,
-  session?: SessionInfo
-): Promise<string> {
+async function resolveNotificationUrl(pushData: any, session?: SessionInfo): Promise<string> {
   const roomId = pushData?.room_id ?? pushData?.data?.room_id;
   const eventId = pushData?.event_id ?? pushData?.data?.event_id;
   const url = pushData?.data?.url ?? pushData?.url;
@@ -348,6 +345,8 @@ const onPushNotification = async (event: PushEvent) => {
     },
   };
 
+  if (!event.data) return;
+
   if (event.data) {
     const session = getAnySession();
     let rawPayload = '';
@@ -357,7 +356,8 @@ const onPushNotification = async (event: PushEvent) => {
         await persistPushDebug(rawPayload);
       }
     } catch {
-      // ignore read errors
+      // If it can't be parsed/handled reliably, ignore it (or log only)
+      return;
     }
 
     try {
@@ -368,6 +368,14 @@ const onPushNotification = async (event: PushEvent) => {
       }
       const roomId = pushData.room_id ?? pushData.data?.room_id;
       const eventId = pushData.event_id ?? pushData.data?.event_id;
+      if (!roomId || !eventId) {
+        if (typeof pushData.unread === 'number') {
+          try {
+            self.navigator.setAppBadge(pushData.unread);
+          } catch {}
+        }
+        return;
+      }
       if (session && roomId && eventId) {
         const senderFromEvent = await withTimeout(
           fetchEventSender(session, roomId, eventId),
@@ -395,7 +403,7 @@ const onPushNotification = async (event: PushEvent) => {
       if (pushData.image) options.image = pushData.image;
       if (pushData.vibrate) options.vibrate = pushData.vibrate;
       if (pushData.actions) options.actions = pushData.actions;
-      options.tag = 'Cinny';
+      options.tag = roomId ? `room:${roomId}` : undefined;
       if (typeof pushData.renotify === 'boolean') options.renotify = pushData.renotify;
       if (typeof pushData.silent === 'boolean') options.silent = pushData.silent;
 
@@ -421,11 +429,12 @@ const onPushNotification = async (event: PushEvent) => {
         }
       }
     } catch {
-      if (session?.showPushNotificationContent) {
-        options.body = rawPayload || options.body;
-      } else {
-        options.body = 'You have a new message!';
-      }
+      // if (session?.showPushNotificationContent) {
+      //   options.body = rawPayload || options.body;
+      // } else {
+      //   options.body = 'You have a new message!';
+      // }
+      return;
     }
   }
 
