@@ -381,7 +381,10 @@ const useLiveEventArrive = (room: Room, onArrive: (mEvent: MatrixEvent) => void)
       removed,
       data
     ) => {
-      if (eventRoom?.roomId !== room.roomId || !data.liveEvent) return;
+      if (eventRoom?.roomId !== room.roomId) return;
+      if (removed) return;
+      if (!data?.liveEvent) return;
+      if (toStartOfTimeline) return;
       onArrive(mEvent);
     };
     const handleRedaction: RoomEventHandlerMap[RoomEvent.Redaction] = (mEvent, eventRoom) => {
@@ -405,9 +408,21 @@ const useLiveTimelineRefresh = (room: Room, onRefresh: () => void) => {
       onRefresh();
     };
 
+    // Some SDK versions also emit TimelineReset; treat it like a refresh.
+    // @ts-expect-error - TimelineReset may not exist in all sdk versions
+    const handleTimelineReset: RoomEventHandlerMap[RoomEvent.TimelineRefresh] = (r) => {
+      if ((r as any).roomId !== room.roomId) return;
+      onRefresh();
+    };
+
     room.on(RoomEvent.TimelineRefresh, handleTimelineRefresh);
+    // @ts-expect-error - TimelineReset may not exist in all sdk versions
+    room.on(RoomEvent.TimelineReset, handleTimelineReset);
+
     return () => {
       room.removeListener(RoomEvent.TimelineRefresh, handleTimelineRefresh);
+      // @ts-expect-error - TimelineReset may not exist in all sdk versions
+      room.removeListener(RoomEvent.TimelineReset, handleTimelineReset);
     };
   }, [room, onRefresh]);
 };
@@ -544,6 +559,18 @@ export function RoomTimeline({
   const [timeline, setTimeline] = useState<Timeline>(() =>
     eventId ? getEmptyTimeline() : getInitialTimeline(room)
   );
+
+  // Stable absolute index for the "New Messages" divider (the first event AFTER read-up-to).
+  // This avoids misplacement when timelines are stitched/refreshed and events are inserted.
+  const readMarkerAbsIndex = useMemo(() => {
+    const readUpToId = unreadInfo?.readUptoEventId;
+    if (!readUpToId) return undefined;
+
+    const evtTimeline = getEventTimeline(room, readUpToId);
+    if (!evtTimeline) return undefined;
+
+    return getEventIdAbsoluteIndex(timeline.linkedTimelines, evtTimeline, readUpToId);
+  }, [room, timeline.linkedTimelines, unreadInfo?.readUptoEventId]);
   const eventsLength = getTimelinesEventsCount(timeline.linkedTimelines);
   const liveTimelineLinked =
     timeline.linkedTimelines[timeline.linkedTimelines.length - 1] === getLiveTimeline(room);
@@ -630,17 +657,7 @@ export function RoomTimeline({
           scrollToBottomRef.current.count += 1;
           scrollToBottomRef.current.smooth = true;
 
-          setTimeline((ct) => {
-            const linkedTimelines = refreshFromRoom();
-            const evLength = getTimelinesEventsCount(linkedTimelines);
-            return {
-              linkedTimelines,
-              range: {
-                start: Math.min(ct.range.start + 1, evLength),
-                end: Math.min(ct.range.end + 1, evLength),
-              },
-            };
-          });
+          setTimeline(getInitialTimeline(room));
           return;
         }
 
@@ -691,10 +708,25 @@ export function RoomTimeline({
   useLiveTimelineRefresh(
     room,
     useCallback(() => {
-      if (liveTimelineLinked) {
+      if (atBottomRef.current) {
         setTimeline(getInitialTimeline(room));
+        scrollToBottomRef.current.count += 1;
+        scrollToBottomRef.current.smooth = false;
+        return;
       }
-    }, [room, liveTimelineLinked])
+
+      setTimeline((ct) => {
+        const linkedTimelines = getLinkedTimelines(getLiveTimeline(room));
+        const evLength = getTimelinesEventsCount(linkedTimelines);
+        return {
+          linkedTimelines,
+          range: {
+            start: Math.min(ct.range.start, evLength),
+            end: Math.min(ct.range.end, evLength),
+          },
+        };
+      });
+    }, [room])
   );
 
   useResizeObserver(
@@ -1555,8 +1587,7 @@ export function RoomTimeline({
     // Deterministic adjacency: derive "previous event" from absolute index, not render order.
     const prevEvent = getPrevEventForIndex(timeline.linkedTimelines, item);
 
-    const newDivider =
-      !!readUptoEventIdRef.current && prevEvent?.getId() === readUptoEventIdRef.current;
+    const newDivider = typeof readMarkerAbsIndex === 'number' && item === readMarkerAbsIndex + 1;
 
     const dayDivider = !!prevEvent && !inSameDay(prevEvent.getTs(), mEvent.getTs());
 
