@@ -199,8 +199,6 @@ export class SlidingSyncController {
 
     const configuredLists = new Map(Object.entries(INITIAL_LIST_CONFIGS));
 
-    // Use a SAFE default subscription.
-    // Previously you were using ENCRYPTED with wildcard state, which is very heavy.
     const sync = new SlidingSync(
       client.baseUrl,
       configuredLists,
@@ -209,7 +207,6 @@ export class SlidingSyncController {
       INITIAL_SYNC_TIMEOUT_MS
     );
 
-    // Keep custom subscriptions if you want per-room overrides.
     sync.addCustomSubscription(UNENCRYPTED_SUB_KEY, SUBSCRIPTIONS.UNENCRYPTED);
 
     this.syncInstance = sync;
@@ -217,7 +214,6 @@ export class SlidingSyncController {
 
     logger.info(`[SlidingSync] Activated at ${client.baseUrl}`);
 
-    // Prefer passing the stable reference, so background work never touches this.syncInstance
     this.executeBackgroundSpidering(sync, 100, 0);
 
     return sync;
