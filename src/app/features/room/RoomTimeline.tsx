@@ -383,8 +383,14 @@ const useLiveEventArrive = (room: Room, onArrive: (mEvent: MatrixEvent) => void)
     ) => {
       if (eventRoom?.roomId !== room.roomId) return;
       if (removed) return;
-      if (!data?.liveEvent) return;
       if (toStartOfTimeline) return;
+
+      // Sliding Sync may not set data.liveEvent the same way as /sync.
+      // Treat it as live unless explicitly false.
+      const isExplicitlyNotLive =
+        data && 'liveEvent' in (data as any) && (data as any).liveEvent === false;
+      if (isExplicitlyNotLive) return;
+
       onArrive(mEvent);
     };
     const handleRedaction: RoomEventHandlerMap[RoomEvent.Redaction] = (mEvent, eventRoom) => {
