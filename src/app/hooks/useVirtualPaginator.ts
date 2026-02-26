@@ -166,28 +166,6 @@ export const useVirtualPaginator = <TScrollElement extends HTMLElement>(
 
   const initialRenderRef = useRef(true);
 
-  const prevCountRef = useRef(count);
-
-  useEffect(() => {
-    const prevCount = prevCountRef.current;
-    if (prevCount === count) return;
-
-    if (count > prevCount) {
-      const wasAtEnd = range.end >= prevCount;
-
-      if (wasAtEnd) {
-        const end = count;
-        const start = Math.max(end - limit, 0);
-
-        if (range.start !== start || range.end !== end) {
-          onRangeChange({ start, end });
-        }
-      }
-    }
-
-    prevCountRef.current = count;
-  }, [count, range.start, range.end, limit, onRangeChange]);
-
   const restoreScrollRef = useRef<{
     scrollTop: number;
     anchorOffsetTop: number;
