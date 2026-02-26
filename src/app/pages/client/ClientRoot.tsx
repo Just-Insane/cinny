@@ -36,6 +36,7 @@ import { SyncStatus } from './SyncStatus';
 import { AuthMetadataProvider } from '../../hooks/useAuthMetadata';
 import { getSecret } from '../../../client/state/auth';
 import { useAppVisibility } from '../../hooks/useAppVisibility';
+import { SlidingSyncController } from '../../../client/SlidingSyncController';
 
 function ClientRootLoading() {
   return (
@@ -174,6 +175,14 @@ export function ClientRoot({ children }: ClientRootProps) {
       startMatrix(mx);
     }
   }, [mx, startMatrix]);
+
+  useEffect(() => {
+    if (!mx) return;
+    if (!mx.clientRunning) return;
+    if (!SlidingSyncController.isSupportedOnServer) return;
+
+    void SlidingSyncController.getInstance().resumeFromAppForeground();
+  }, [mx, mx?.clientRunning]);
 
   useSyncState(
     mx,

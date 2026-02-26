@@ -168,6 +168,12 @@ export class SlidingSyncController {
   private slidingSyncEnabled = false;
   private slidingSyncDisabled = false;
 
+  private lastRequestFinishedAt = 0;
+  private lastCompleteAt = 0;
+  private lastErrorAt = 0;
+
+  private inResume: Promise<void> | null = null;
+
   // serialize mutations that can race (setListRanges, setList, modifyRoomSubscriptions, etc.)
   private op: Promise<void> = Promise.resolve();
 
@@ -215,6 +221,18 @@ export class SlidingSyncController {
 
     this.syncInstance = sync;
     this.initializationResolve?.();
+
+    sync.on(SlidingSyncEvent.Lifecycle, (state, _resp, err) => {
+      if (err) this.lastErrorAt = Date.now();
+
+      // mark any “the request finished” as progress (more reliable than Complete-only)
+      if (state === SlidingSyncState.RequestFinished) {
+        this.lastRequestFinishedAt = Date.now();
+      }
+      if (state === SlidingSyncState.Complete) {
+        this.lastCompleteAt = Date.now();
+      }
+    });
 
     logger.info(`[SlidingSync] Activated at ${client.baseUrl}`);
 
@@ -347,6 +365,77 @@ export class SlidingSyncController {
 
     this.slidingSyncDisabled = true;
     this.initializationResolve?.(); // unblock focusRoom callers
+  }
+
+  private waitForNextRequestFinished(afterMs: number, timeoutMs: number): Promise<boolean> {
+    const sync = this.syncInstance;
+    if (!sync) return Promise.resolve(false);
+
+    return new Promise((resolve) => {
+      let done = false;
+
+      const timer = window.setTimeout(() => {
+        if (done) return;
+        done = true;
+        sync.off(SlidingSyncEvent.Lifecycle, onLife);
+        resolve(false);
+      }, timeoutMs);
+
+      const onLife = (
+        state: SlidingSyncState,
+        _r: MSC3575SlidingSyncResponse | null,
+        _err?: Error
+      ) => {
+        if (state !== SlidingSyncState.RequestFinished) return;
+        if (this.lastRequestFinishedAt <= afterMs) return;
+
+        if (done) return;
+        done = true;
+        window.clearTimeout(timer);
+        sync.off(SlidingSyncEvent.Lifecycle, onLife);
+        resolve(true);
+      };
+
+      sync.on(SlidingSyncEvent.Lifecycle, onLife);
+    });
+  }
+
+  public async resumeFromAppForeground(): Promise<void> {
+    if (this.slidingSyncDisabled) return;
+
+    // serialize + dedupe (focus/visibility/online can all fire together)
+    if (this.inResume) return this.inResume;
+
+    this.inResume = (async () => {
+      await this.initializationPromise;
+      const sync = this.syncInstance;
+      if (!sync) return;
+
+      const now = Date.now();
+      const lastProgress = Math.max(this.lastRequestFinishedAt, this.lastCompleteAt);
+
+      // Always do a light “poke” on foreground.
+      sync.resend(); // supported API :contentReference[oaicite:7]{index=7}
+
+      // Wait briefly to see if we got an actual request-finished tick.
+      const progressed = await this.waitForNextRequestFinished(lastProgress, 8000);
+
+      if (progressed) return;
+
+      // If we didn’t progress, we’re likely stalled (common on iOS PWA resume).
+      // Do a controlled restart of the SlidingSync loop.
+      try {
+        sync.stop(); // supported API :contentReference[oaicite:8]{index=8}
+        void sync.start().catch((e) => logger.warn('[SlidingSync] restart start() failed', e)); // supported API :contentReference[oaicite:9]{index=9}
+        logger.info('[SlidingSync] Restarted sliding sync after stalled resume.');
+      } catch (e) {
+        logger.warn('[SlidingSync] restart failed', e);
+      }
+    })().finally(() => {
+      this.inResume = null;
+    });
+
+    return this.inResume;
   }
 
   /**
