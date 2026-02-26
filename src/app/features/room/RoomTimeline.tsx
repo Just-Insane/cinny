@@ -175,7 +175,40 @@ export const getLinkedTimelines = (timeline: EventTimeline): EventTimeline[] => 
   return timelines;
 };
 
-export const timelineToEventsCount = (t: EventTimeline) => t.getEvents().length;
+const compareTimelineEvents = (a: MatrixEvent, b: MatrixEvent) => {
+  const at = a.getTs() ?? 0;
+  const bt = b.getTs() ?? 0;
+  if (at !== bt) return at - bt;
+
+  // stable tie-breaker
+  const aid = a.getId() ?? '';
+  const bid = b.getId() ?? '';
+  return aid.localeCompare(bid);
+};
+
+// Cache per EventTimeline to avoid sorting on every render
+const timelineSortedCache = new WeakMap<
+  EventTimeline,
+  { len: number; lastKey: string; events: MatrixEvent[] }
+>();
+
+const getTimelineEventsOrdered = (t: EventTimeline): MatrixEvent[] => {
+  const evs = t.getEvents();
+  const last = evs[evs.length - 1];
+
+  const lastKey = `${last?.getId() ?? ''}:${last?.getTs() ?? 0}:${last?.getSender() ?? ''}`;
+
+  const cached = timelineSortedCache.get(t);
+  if (cached && cached.len === evs.length && cached.lastKey === lastKey) {
+    return cached.events;
+  }
+
+  const ordered = [...evs].sort(compareTimelineEvents);
+  timelineSortedCache.set(t, { len: evs.length, lastKey, events: ordered });
+  return ordered;
+};
+
+export const timelineToEventsCount = (t: EventTimeline) => getTimelineEventsOrdered(t).length;
 export const getTimelinesEventsCount = (timelines: EventTimeline[]): number => {
   const timelineEventCountReducer = (count: number, tm: EventTimeline) =>
     count + timelineToEventsCount(tm);
@@ -186,21 +219,26 @@ export const getTimelineAndBaseIndex = (
   timelines: EventTimeline[],
   index: number
 ): [EventTimeline | undefined, number] => {
-  let uptoTimelineLen = 0;
-  const timeline = timelines.find((t) => {
-    uptoTimelineLen += t.getEvents().length;
-    if (index < uptoTimelineLen) return true;
-    return false;
-  });
-  if (!timeline) return [undefined, 0];
-  return [timeline, uptoTimelineLen - timeline.getEvents().length];
+  let upto = 0;
+
+  for (const t of timelines) {
+    const ordered = getTimelineEventsOrdered(t);
+    const len = ordered.length;
+
+    if (index < upto + len) {
+      return [t, upto];
+    }
+    upto += len;
+  }
+
+  return [undefined, 0];
 };
 
 export const getTimelineRelativeIndex = (absoluteIndex: number, timelineBaseIndex: number) =>
   absoluteIndex - timelineBaseIndex;
 
 export const getTimelineEvent = (timeline: EventTimeline, index: number): MatrixEvent | undefined =>
-  timeline.getEvents()[index];
+  getTimelineEventsOrdered(timeline)[index];
 
 export const getEventIdAbsoluteIndex = (
   timelines: EventTimeline[],
@@ -209,11 +247,15 @@ export const getEventIdAbsoluteIndex = (
 ): number | undefined => {
   const timelineIndex = timelines.findIndex((t) => t === eventTimeline);
   if (timelineIndex === -1) return undefined;
-  const eventIndex = eventTimeline.getEvents().findIndex((evt) => evt.getId() === eventId);
+
+  const events = getTimelineEventsOrdered(eventTimeline);
+  const eventIndex = events.findIndex((evt) => evt.getId() === eventId);
   if (eventIndex === -1) return undefined;
+
   const baseIndex = timelines
     .slice(0, timelineIndex)
-    .reduce((accValue, timeline) => timeline.getEvents().length + accValue, 0);
+    .reduce((accValue, timeline) => getTimelineEventsOrdered(timeline).length + accValue, 0);
+
   return baseIndex + eventIndex;
 };
 
