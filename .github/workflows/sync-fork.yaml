@@ -56,7 +56,7 @@ jobs:
       - name: Sync with upstream/voice-calls
         run: |
           git fetch upstream voice-calls
-          git checkout -B dev origin/voice-calls
+          git checkout -B voice-calls origin/voice-calls
           git merge upstream/voice-calls
           git push origin voice-calls
 
