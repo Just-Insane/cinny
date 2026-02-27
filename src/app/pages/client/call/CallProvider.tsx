@@ -15,6 +15,7 @@ import {
 } from 'matrix-widget-api';
 import { useParams } from 'react-router-dom';
 import { SmallWidget } from '../../../features/call/SmallWidget';
+import { is } from 'immer/dist/internal';
 
 interface MediaStatePayload {
   data?: {
@@ -48,10 +49,12 @@ interface CallContextState {
     data: T
   ) => Promise<void>;
   isAudioEnabled: boolean;
+  isDeafened: boolean;
   isVideoEnabled: boolean;
   isChatOpen: boolean;
   isActiveCallReady: boolean;
   toggleAudio: () => Promise<void>;
+  toggleDeafened: () => Promise<void>;
   toggleVideo: () => Promise<void>;
   toggleChat: () => Promise<void>;
 }
@@ -63,6 +66,7 @@ interface CallProviderProps {
 }
 
 const DEFAULT_AUDIO_ENABLED = true;
+const DEFAULT_DEAFENED = false;
 const DEFAULT_VIDEO_ENABLED = false;
 const DEFAULT_CHAT_OPENED = false;
 
@@ -81,6 +85,7 @@ export function CallProvider({ children }: CallProviderProps) {
     useState<HTMLIFrameElement | null>(null);
 
   const [isAudioEnabled, setIsAudioEnabledState] = useState<boolean>(DEFAULT_AUDIO_ENABLED);
+  const [isDeafened, setIsDeafenedState] = useState<boolean>(DEFAULT_DEAFENED);
   const [isVideoEnabled, setIsVideoEnabledState] = useState<boolean>(DEFAULT_VIDEO_ENABLED);
   const [isChatOpen, setIsChatOpenState] = useState<boolean>(DEFAULT_CHAT_OPENED);
   const [isActiveCallReady, setIsActiveCallReady] = useState<boolean>(false);
@@ -155,22 +160,48 @@ export function CallProvider({ children }: CallProviderProps) {
     [activeClientWidgetApi, activeCallRoomId, activeClientWidgetApiRoomId]
   );
 
+  const setAudio = useCallback(
+    async (newState: boolean) => {
+      if (newState == isAudioEnabled) return;
+      setIsAudioEnabledState(newState);
+      // If user is deafened and user is unmuting the mic, undeafen
+      if (newState && isDeafened) setDeafened(false);
+
+      if (isActiveCallReady) {
+        try {
+          await sendWidgetAction(WIDGET_MEDIA_STATE_UPDATE_ACTION, {
+            audio_enabled: newState,
+            video_enabled: isVideoEnabled,
+          });
+        } catch (error) {
+          setIsAudioEnabledState(!newState);
+          throw error;
+        }
+      }
+    },
+    [isAudioEnabled, isDeafened, isVideoEnabled, sendWidgetAction, isActiveCallReady]
+  );
+
+  const setDeafened = useCallback(
+    async (newState: boolean) => {
+      if (newState == isDeafened) return;
+      setIsDeafenedState(newState);
+
+      // If mic is unmuted and user is deafening, mute mic
+      if (newState && isAudioEnabled) setAudio(false);
+    },
+    [isDeafened, isAudioEnabled, isVideoEnabled, sendWidgetAction, isActiveCallReady]
+  );
+
   const toggleAudio = useCallback(async () => {
     const newState = !isAudioEnabled;
-    setIsAudioEnabledState(newState);
+    setAudio(newState);
+  }, [isAudioEnabled, isDeafened, isVideoEnabled, sendWidgetAction, isActiveCallReady]);
 
-    if (isActiveCallReady) {
-      try {
-        await sendWidgetAction(WIDGET_MEDIA_STATE_UPDATE_ACTION, {
-          audio_enabled: newState,
-          video_enabled: isVideoEnabled,
-        });
-      } catch (error) {
-        setIsAudioEnabledState(!newState);
-        throw error;
-      }
-    }
-  }, [isAudioEnabled, isVideoEnabled, sendWidgetAction, isActiveCallReady]);
+  const toggleDeafened = useCallback(async () => {
+    const newState = !isDeafened;
+    setDeafened(newState);
+  }, [isDeafened, isAudioEnabled, isVideoEnabled, sendWidgetAction, isActiveCallReady]);
 
   const toggleVideo = useCallback(async () => {
     const newState = !isVideoEnabled;
@@ -187,7 +218,7 @@ export function CallProvider({ children }: CallProviderProps) {
         throw error;
       }
     }
-  }, [isVideoEnabled, isAudioEnabled, sendWidgetAction, isActiveCallReady]);
+  }, [isVideoEnabled, isAudioEnabled, isDeafened, sendWidgetAction, isActiveCallReady]);
 
   useEffect(() => {
     if (!activeCallRoomId && !viewedCallRoomId) {
@@ -197,6 +228,19 @@ export function CallProvider({ children }: CallProviderProps) {
     if (!activeClientWidgetApi) {
       return;
     }
+
+    if (!activeClientWidgetIframeRef) {
+      return;
+    }
+
+    const iframeDoc =
+      activeClientWidgetIframeRef?.contentDocument ||
+      activeClientWidgetIframeRef?.contentWindow?.document;
+
+    // Loop over all audio elements of the call iframe and set muted according to the isDeafened state
+    iframeDoc?.querySelectorAll('audio').forEach((el) => {
+      (el as HTMLAudioElement).muted = isDeafened;
+    });
 
     const handleHangup = (ev: CustomEvent) => {
       ev.preventDefault();
@@ -277,6 +321,7 @@ export function CallProvider({ children }: CallProviderProps) {
     hangUp,
     isChatOpen,
     isAudioEnabled,
+    isDeafened,
     isVideoEnabled,
     isActiveCallReady,
     viewedRoomId,
@@ -305,9 +350,11 @@ export function CallProvider({ children }: CallProviderProps) {
       sendWidgetAction,
       isChatOpen,
       isAudioEnabled,
+      isDeafened,
       isVideoEnabled,
       isActiveCallReady,
       toggleAudio,
+      toggleDeafened,
       toggleVideo,
       toggleChat,
     }),
