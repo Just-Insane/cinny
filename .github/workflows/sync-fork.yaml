@@ -12,7 +12,7 @@ permissions:
   contents: write
 
 jobs:
-  sync:
+  sync-dev-main:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout your forked repository
@@ -33,6 +33,32 @@ jobs:
           git checkout -B dev origin/main
           git merge upstream/dev
           git push origin main
+
+      - name: Clean up
+        run: |
+          git remote remove upstream
+
+  sync-voice-calls:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout your forked repository
+        uses: actions/checkout@v4
+        with:
+          repository: just-insane/cinny
+          token: ${{ secrets.CLA_PAT }}
+          fetch-depth: 0
+
+      - name: Add upstream repository
+        run: |
+          git remote add upstream https://github.com/cinnyapp/cinny.git
+          git fetch upstream
+
+      - name: Sync with upstream/voice-calls
+        run: |
+          git fetch upstream voice-calls
+          git checkout -B dev origin/voice-calls
+          git merge upstream/voice-calls
+          git push origin voice-calls
 
       - name: Clean up
         run: |
