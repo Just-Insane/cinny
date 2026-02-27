@@ -12,6 +12,19 @@
         <img alt="Sponsor Cinny" src="https://img.shields.io/opencollective/all/cinny?logo=opencollective&style=social"></a>
 </p>
 
+## FORK NOTES
+
+This fork merges features from [GigiaJ/Cinny](https://github.com/GigiaJ/cinny) into [cinnyapp/cinny](https://github.com/cinnyapp/cinny), including:
+
+- Voice call support via Element Call, in a widget (Not the voice calls branch from upstream)
+- Mobile Push notifications (using a hosted Sygnal server provided by GigiaJ currently)
+- Sliding Sync (provides faster launch time if your server supports it)
+- Mobile UI enhancements
+
+This fork diverges significantly from both [GigiaJ/Cinny](https://github.com/GigiaJ/cinny) and [cinnyapp/cinny](https://github.com/cinnyapp/cinny), and any issues in this fork should be made against this repo.
+
+## Upstream README
+
 A Matrix client focusing primarily on simple, elegant and secure interface. The main goal is to have an instant messaging application that is easy on people and has a modern touch.
 - [Roadmap](https://github.com/orgs/cinnyapp/projects/1)
 - [Contributing](./CONTRIBUTING.md)
