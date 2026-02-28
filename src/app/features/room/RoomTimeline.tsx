@@ -193,6 +193,30 @@ const compareTimelineEvents = (a: MatrixEvent, b: MatrixEvent) => {
   return aid.localeCompare(bid);
 };
 
+// ---- Stable React keys for message rows ------------------------------------
+// Some events can temporarily not have an event_id (e.g. local echo) or can mutate in-place
+// (decrypt/replaced/redaction). We need a stable key to keep React from reusing wrong nodes.
+const getEventStableKey = (ev: MatrixEvent): string => {
+  const id = ev.getId();
+  if (id) return id;
+
+  // txnId exists for local echoes in many SDK paths
+  const txnId = (ev as any).getTxnId?.() as string | undefined;
+  if (txnId) return `local:${txnId}`;
+
+  // last-resort stable-ish fallback (won't be perfect but avoids index keys)
+  const ts = ev.getTs() ?? 0;
+  const sender = ev.getSender() ?? '';
+  return `fallback:${sender}:${ts}:${ev.getType()}:${ev.getStateKey() ?? ''}`;
+};
+
+// ---- Cache invalidation ----------------------------------------------------
+// Our sort cache is per EventTimeline (WeakMap). If events mutate in-place (decrypt/edit),
+// length + "lastKey" can remain unchanged, so we must explicitly invalidate.
+const invalidateTimelineSortedCache = (timelines: EventTimeline[]) => {
+  for (const t of timelines) timelineSortedCache.delete(t);
+};
+
 // Cache per EventTimeline to avoid sorting on every render
 const timelineSortedCache = new WeakMap<
   EventTimeline,
@@ -652,8 +676,12 @@ export function RoomTimeline({
     if (!evtTimeline) return undefined;
 
     return getEventIdAbsoluteIndex(timeline.linkedTimelines, evtTimeline, readUpToId);
-  }, [room, timeline.linkedTimelines, unreadInfo?.readUptoEventId]);
-  const eventsLength = getTimelinesEventsCount(timeline.linkedTimelines);
+  }, [room, timeline.linkedTimelines, unreadInfo?.readUptoEventId, timelineVersion]);
+
+  const eventsLength = useMemo(
+    () => getTimelinesEventsCount(timeline.linkedTimelines),
+    [timeline.linkedTimelines, timelineVersion]
+  );
   const liveTimelineLinked =
     timeline.linkedTimelines[timeline.linkedTimelines.length - 1] === getLiveTimeline(room);
   const canPaginateBack =
@@ -670,6 +698,15 @@ export function RoomTimeline({
     PAGINATION_LIMIT
   );
 
+  // Any time events can mutate without changing list length (decrypt/edit/redaction),
+  // bump this to force derived calculations + virtual list to refresh.
+  const [timelineVersion, setTimelineVersion] = useState(0);
+  const bumpTimelineVersion = useCallback(() => {
+    // Clear sort cache for currently-linked timelines and force rerender.
+    invalidateTimelineSortedCache(timeline.linkedTimelines);
+    setTimelineVersion((v) => v + 1);
+  }, [timeline.linkedTimelines]);
+
   const getScrollElement = useCallback(() => scrollRef.current, []);
 
   // iOS PWA: when restoring from background / push-open / BFCache,
@@ -680,6 +717,7 @@ export function RoomTimeline({
 
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
+          bumpTimelineVersion();
           setTimeline((ct) => {
             const linkedTimelines = getLinkedTimelines(getLiveTimeline(room));
             const evLength = getTimelinesEventsCount(linkedTimelines);
@@ -770,19 +808,36 @@ export function RoomTimeline({
     }, [alive, room])
   );
 
+  const seenEventsRef = useRef(new WeakSet<MatrixEvent>());
+
   useLiveEventArrive(
     room,
     useCallback(
       (mEvt: MatrixEvent) => {
+        // Attach mutation listeners once per MatrixEvent object:
+        if (!seenEventsRef.current.has(mEvt)) {
+          seenEventsRef.current.add(mEvt);
+
+          const bump = () => bumpTimelineVersion();
+
+          // Use string event names to avoid sdk enum/version mismatches
+          try {
+            (mEvt as any).on?.('Event.decrypted', bump);
+            (mEvt as any).on?.('Event.replaced', bump);
+            (mEvt as any).on?.('Event.redaction', bump);
+          } catch {
+            // ignore listener attachment issues
+          }
+        }
+
+        // Any new live event implies timelines can change; invalidate + bump
+        bumpTimelineVersion();
+
         // Keep our view of linked timelines in sync with the Room's live timeline.
-        // This avoids stale absolute-index mappings when new events are injected.
         const refreshFromRoom = () => getLinkedTimelines(getLiveTimeline(room));
 
         if (atBottomRef.current) {
           if (document.hasFocus() && (!unreadInfo || mEvt.getSender() === mx.getUserId())) {
-            // Check if the document is in focus (user is actively viewing the app),
-            // and either there are no unread messages or the latest message is from the current user.
-            // If either condition is met, trigger the markAsRead function to send a read receipt.
             requestAnimationFrame(() => markAsRead(mx, mEvt.getRoomId()!, hideActivity));
           }
 
@@ -807,7 +862,7 @@ export function RoomTimeline({
           setUnreadInfo(getRoomUnreadInfo(room));
         }
       },
-      [mx, room, unreadInfo, hideActivity]
+      [mx, room, unreadInfo, hideActivity, bumpTimelineVersion]
     )
   );
 
@@ -844,6 +899,8 @@ export function RoomTimeline({
   useLiveTimelineRefresh(
     room,
     useCallback(() => {
+      bumpTimelineVersion();
+
       if (atBottomRef.current) {
         setTimeline(getInitialTimeline(room));
         scrollToBottomRef.current.count += 1;
@@ -862,7 +919,7 @@ export function RoomTimeline({
           },
         };
       });
-    }, [room])
+    }, [room, bumpTimelineVersion])
   );
 
   useResizeObserver(
@@ -1219,7 +1276,7 @@ export function RoomTimeline({
 
         return (
           <Message
-            key={mEvent.getId()}
+            key={getEventStableKey(mEvent)}
             data-message-item={item}
             data-message-id={mEventId}
             room={room}
@@ -1302,7 +1359,7 @@ export function RoomTimeline({
 
         return (
           <Message
-            key={mEvent.getId()}
+            key={getEventStableKey(mEvent)}
             data-message-item={item}
             data-message-id={mEventId}
             room={room}
@@ -1423,7 +1480,7 @@ export function RoomTimeline({
 
         return (
           <Message
-            key={mEvent.getId()}
+            key={getEventStableKey(mEvent)}
             data-message-item={item}
             data-message-id={mEventId}
             room={room}
@@ -1498,7 +1555,7 @@ export function RoomTimeline({
 
         return (
           <Event
-            key={mEvent.getId()}
+            key={getEventStableKey(mEvent)}
             data-message-item={item}
             data-message-id={mEventId}
             room={room}
@@ -1540,7 +1597,7 @@ export function RoomTimeline({
 
         return (
           <Event
-            key={mEvent.getId()}
+            key={getEventStableKey(mEvent)}
             data-message-item={item}
             data-message-id={mEventId}
             room={room}
@@ -1583,7 +1640,7 @@ export function RoomTimeline({
 
         return (
           <Event
-            key={mEvent.getId()}
+            key={getEventStableKey(mEvent)}
             data-message-item={item}
             data-message-id={mEventId}
             room={room}
@@ -1626,7 +1683,7 @@ export function RoomTimeline({
 
         return (
           <Event
-            key={mEvent.getId()}
+            key={getEventStableKey(mEvent)}
             data-message-item={item}
             data-message-id={mEventId}
             room={room}
@@ -1671,7 +1728,7 @@ export function RoomTimeline({
 
       return (
         <Event
-          key={mEvent.getId()}
+          key={getEventStableKey(mEvent)}
           data-message-item={item}
           data-message-id={mEventId}
           room={room}
@@ -1721,7 +1778,7 @@ export function RoomTimeline({
 
       return (
         <Event
-          key={mEvent.getId()}
+          key={getEventStableKey(mEvent)}
           data-message-item={item}
           data-message-id={mEventId}
           room={room}
@@ -1758,8 +1815,10 @@ export function RoomTimeline({
     const timelineSet = eventTimeline?.getTimelineSet();
     const mEvent = getTimelineEvent(eventTimeline, getTimelineRelativeIndex(item, baseIndex));
     const mEventId = mEvent?.getId();
+    if (!mEvent) return null;
 
-    if (!mEvent || !mEventId) return null;
+    // keep stable rendering even if event_id isn't present yet
+    const stableKey = getEventStableKey(mEvent);
 
     const eventSender = mEvent.getSender();
     if (eventSender && ignoredUsersSet.has(eventSender)) {
@@ -1837,8 +1896,10 @@ export function RoomTimeline({
       ) : null;
 
     if (eventJSX && (newDividerJSX || dayDividerJSX)) {
+      const stableKey = getEventStableKey(mEvent);
+
       return (
-        <React.Fragment key={mEventId}>
+        <React.Fragment key={stableKey}>
           {newDividerJSX}
           {dayDividerJSX}
           {eventJSX}
