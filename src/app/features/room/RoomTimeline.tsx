@@ -666,6 +666,24 @@ export function RoomTimeline({
     eventId ? getEmptyTimeline() : getInitialTimeline(room)
   );
 
+  // When eventId is set, we are in "deep-link mode" (notification/open specific event).
+  // In this mode, do NOT auto-restitch to live timeline/range, or the target event can disappear.
+  const isDeepLinkMode = !!eventId;
+  const isDeepLinkModeRef = useRef(isDeepLinkMode);
+  useEffect(() => {
+    isDeepLinkModeRef.current = !!eventId;
+  }, [eventId]);
+
+  const exitDeepLinkToLive = useCallback(() => {
+    // replace URL to remove eventId without adding a new history entry
+    navigateRoom(room.roomId, undefined, { replace: true });
+
+    // restore live timeline window
+    setTimeline(getInitialTimeline(room));
+    scrollToBottomRef.current.count += 1;
+    scrollToBottomRef.current.smooth = false;
+  }, [navigateRoom, room.roomId, room]);
+
   const [timelineVersion, setTimelineVersion] = useState(0);
 
   // Stable absolute index for the "New Messages" divider (the first event AFTER read-up-to).
@@ -725,6 +743,9 @@ export function RoomTimeline({
     const onResume = () => {
       if (document.visibilityState && document.visibilityState !== 'visible') return;
 
+      // If we are viewing a specific event timeline, do NOT restitch to live timeline.
+      if (isDeepLinkModeRef.current) return;
+
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           bumpTimelineVersion();
@@ -765,7 +786,7 @@ export function RoomTimeline({
       window.removeEventListener('focus', onResume);
       document.removeEventListener('visibilitychange', onResume);
     };
-  }, [room]);
+  }, [room, bumpTimelineVersion]);
 
   const { getItems, scrollToItem, scrollToElement, observeBackAnchor, observeFrontAnchor } =
     useVirtualPaginator({
@@ -847,6 +868,12 @@ export function RoomTimeline({
         const refreshFromRoom = () => getLinkedTimelines(getLiveTimeline(room));
 
         if (atBottomRef.current) {
+          // In deep-link mode, do NOT jump to the live timeline window on new events.
+          // This can make the deep-linked target disappear.
+          if (isDeepLinkModeRef.current) {
+            return;
+          }
+
           if (document.hasFocus() && (!unreadInfo || mEvt.getSender() === mx.getUserId())) {
             requestAnimationFrame(() => markAsRead(mx, mEvt.getRoomId()!, hideActivity));
           }
@@ -910,6 +937,16 @@ export function RoomTimeline({
     room,
     useCallback(() => {
       bumpTimelineVersion();
+
+      // In deep-link mode, keep the currently loaded event timeline stable.
+      // A refresh can otherwise restitch to live and drop the target event.
+      if (isDeepLinkModeRef.current) {
+        setTimeline((ct) => ({
+          linkedTimelines: ct.linkedTimelines,
+          range: { ...ct.range },
+        }));
+        return;
+      }
 
       if (atBottomRef.current) {
         setTimeline(getInitialTimeline(room));
@@ -1045,11 +1082,32 @@ export function RoomTimeline({
   );
 
   useEffect(() => {
-    if (eventId) {
-      setTimeline(getEmptyTimeline());
-      loadEventTimeline(eventId);
+    if (!eventId) return;
+
+    // If the event is already in our current stitched timelines, just scroll and exit deep-link mode.
+    const evtTimeline = getEventTimeline(room, eventId);
+    const absIndex =
+      evtTimeline && getEventIdAbsoluteIndex(timeline.linkedTimelines, evtTimeline, eventId);
+
+    if (typeof absIndex === 'number') {
+      // If we’re already at/near the bottom, treat it as “latest notification” and return to live view.
+      // (Even if you aren't at bottom, it's still safe to exit deep-link mode once visible.)
+      scrollToItem(absIndex, { behavior: 'instant', align: 'center', stopInView: true });
+      exitDeepLinkToLive();
+      return;
     }
-  }, [eventId, loadEventTimeline]);
+
+    // Otherwise load the event timeline (deep-link mode)
+    setTimeline(getEmptyTimeline());
+    loadEventTimeline(eventId);
+  }, [
+    eventId,
+    room,
+    timeline.linkedTimelines,
+    scrollToItem,
+    loadEventTimeline,
+    exitDeepLinkToLive,
+  ]);
 
   // Scroll to bottom on initial timeline load
   useLayoutEffect(() => {
