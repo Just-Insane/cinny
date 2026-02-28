@@ -89,9 +89,6 @@ jobs:
           images: |
             ${{ secrets.DOCKER_USERNAME }}/cinny
             ghcr.io/${{ github.repository }}
-      - name: Compute short SHA
-        id: vars
-        run: echo "short_sha=$(git rev-parse --short HEAD)" >> $GITHUB_OUTPUT
       - name: Build and push Docker image
         uses: docker/build-push-action@v6.19.2
         with:
@@ -101,4 +98,4 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           build-args: |
-            VITE_BUILD_HASH=${{ steps.vars.outputs.short_sha }}
+            GIT_SHA=${{ github.sha }}
