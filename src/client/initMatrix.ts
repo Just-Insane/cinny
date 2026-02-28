@@ -66,6 +66,8 @@ export const startClient = async (mx: MatrixClient) => {
 };
 
 export const clearCacheAndReload = async (mx: MatrixClient) => {
+  SlidingSyncController.getInstance().dispose();
+
   mx.stopClient();
   clearNavToActivePathStore(mx.getSafeUserId());
   await mx.store.deleteAllData();
@@ -74,6 +76,8 @@ export const clearCacheAndReload = async (mx: MatrixClient) => {
 
 export const logoutClient = async (mx: MatrixClient) => {
   pushSessionToSW();
+  SlidingSyncController.getInstance().dispose();
+
   mx.stopClient();
   try {
     await mx.logout();
