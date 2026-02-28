@@ -80,7 +80,7 @@ const require = createRequire(import.meta.url);
 const pkg = require('./package.json');
 
 function resolveBuildHash() {
-  const fromEnv = process.env.GIT_SHA ?? '';
+  const fromEnv = process.env.VITE_BUILD_HASH ?? process.env.GIT_SHA ?? '';
   if (fromEnv) return fromEnv;
   try {
     return execSync('git rev-parse --short HEAD', { stdio: ['ignore', 'pipe', 'ignore'] })
