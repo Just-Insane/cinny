@@ -666,8 +666,16 @@ export function RoomTimeline({
     eventId ? getEmptyTimeline() : getInitialTimeline(room)
   );
 
+  const [timelineVersion, setTimelineVersion] = useState(0);
+
   // Stable absolute index for the "New Messages" divider (the first event AFTER read-up-to).
   // This avoids misplacement when timelines are stitched/refreshed and events are inserted.
+
+  const eventsLength = useMemo(
+    () => getTimelinesEventsCount(timeline.linkedTimelines),
+    [timeline.linkedTimelines, timelineVersion]
+  );
+
   const readMarkerAbsIndex = useMemo(() => {
     const readUpToId = unreadInfo?.readUptoEventId;
     if (!readUpToId) return undefined;
@@ -678,10 +686,6 @@ export function RoomTimeline({
     return getEventIdAbsoluteIndex(timeline.linkedTimelines, evtTimeline, readUpToId);
   }, [room, timeline.linkedTimelines, unreadInfo?.readUptoEventId, timelineVersion]);
 
-  const eventsLength = useMemo(
-    () => getTimelinesEventsCount(timeline.linkedTimelines),
-    [timeline.linkedTimelines, timelineVersion]
-  );
   const liveTimelineLinked =
     timeline.linkedTimelines[timeline.linkedTimelines.length - 1] === getLiveTimeline(room);
   const canPaginateBack =
@@ -700,12 +704,18 @@ export function RoomTimeline({
 
   // Any time events can mutate without changing list length (decrypt/edit/redaction),
   // bump this to force derived calculations + virtual list to refresh.
-  const [timelineVersion, setTimelineVersion] = useState(0);
-  const bumpTimelineVersion = useCallback(() => {
-    // Clear sort cache for currently-linked timelines and force rerender.
-    invalidateTimelineSortedCache(timeline.linkedTimelines);
-    setTimelineVersion((v) => v + 1);
+  const linkedTimelinesRef = useRef<EventTimeline[]>(timeline.linkedTimelines);
+
+  // keep ref updated (no TDZ)
+  useEffect(() => {
+    linkedTimelinesRef.current = timeline.linkedTimelines;
   }, [timeline.linkedTimelines]);
+
+  const bumpTimelineVersion = useCallback(() => {
+    // invalidate sort cache for current stitched timelines
+    invalidateTimelineSortedCache(linkedTimelinesRef.current);
+    setTimelineVersion((v) => v + 1);
+  }, []);
 
   const getScrollElement = useCallback(() => scrollRef.current, []);
 
