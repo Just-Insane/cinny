@@ -1,19 +1,13 @@
 {
   "defaultHomeserver": 1,
-  "homeserverList": [
-    "converser.eu",
-    "matrix.org",
-    "mozilla.org",
-    "unredacted.org",
-    "xmr.se"
-  ],
+  "homeserverList": ["converser.eu", "matrix.org", "mozilla.org", "unredacted.org", "xmr.se"],
   "allowCustomHomeservers": true,
   "elementCallUrl": null,
 
   "pushNotificationDetails": {
-    "pushNotifyUrl": "https://cinny.cc/_matrix/push/v1/notify",
-    "vapidPublicKey": "BHLwykXs79AbKNiblEtZZRAgnt7o5_ieImhVJD8QZ01MVwAHnXwZzNgQEJJEU3E5CVsihoKtb7yaNe5x3vmkWkI",
-    "webPushAppID": "cc.cinny.web"
+    "pushNotifyUrl": "https://sygnal.cloudhub.social/_matrix/push/v1/notify",
+    "vapidPublicKey": "BCAlXMEViGKDCqCIAxYfj2esZXvbbYTUqWxHpb7kHmBiEVGYHdUmkxoCIkY9zjw6gaJ-ovbxyHGJN8XyiyNqhmM",
+    "webPushAppID": "social.cloudhub.cinny.web"
   },
 
   "featuredCommunities": {
@@ -34,11 +28,11 @@
       "#PrivSec.dev:arcticfoxes.net",
       "#disroot:aria-net.org"
     ],
-    "servers": [ "matrix.org", "mozilla.org", "unredacted.org" ]
+    "servers": ["matrix.org", "mozilla.org", "unredacted.org"]
   },
 
   "hashRouter": {
-    "enabled": false,
+    "enabled": true,
     "basename": "/"
   }
 }
