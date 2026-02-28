@@ -24,9 +24,6 @@
   --pwa-canvas-bg: #ffffff;
 }
 
-.dark-theme {
-  --pwa-canvas-bg: #1a1a1a;
-}
 .butter-theme {
   --tc-link: hsl(213deg 100% 80%);
 
@@ -40,8 +37,6 @@
   --mx-uc-8: hsl(94, 100%, 80%);
 
   --font-secondary: 'InterVariable', var(--font-emoji), sans-serif;
-
-  --pwa-canvas-bg: #1a1916;
 }
 .rose-pine-theme {
   --pwa-canvas-bg: #191724;
