@@ -10,7 +10,7 @@ Now Cloudflare and Vultr have a deal in place where traffic from Cloudflare to V
 2.  **Domain Name**: A domain name managed through Cloudflare.
 3.  **Cloudflare Account**: Your domain must be using Cloudflare's DNS.
 4.  **Docker & Docker Compose**: Docker and `docker-compose` must be installed on your Vultr server.
-5.  **A Matrix Client**: A client like [Cinny](https://github.com/cinnyapp/cinny) that you want to point to your new push gateway.
+5.  **A Matrix Client**: A client like [Cinny](https://github.com/Just-Insane/cinny) that you want to point to your new push gateway.
 
 ---
 

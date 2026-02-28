@@ -20,7 +20,7 @@ export function WelcomePage() {
               <span>
                 Yet another matrix client.{' '}
                 <a
-                  href="https://github.com/cinnyapp/cinny/releases"
+                  href="https://github.com/Just-Insane/cinny/releases"
                   target="_blank"
                   rel="noreferrer noopener"
                 >
@@ -33,7 +33,7 @@ export function WelcomePage() {
               <Box grow="Yes" style={{ maxWidth: toRem(300) }} direction="Column" gap="300">
                 <Button
                   as="a"
-                  href="https://github.com/cinnyapp/cinny"
+                  href="https://github.com/Just-Insane/cinny"
                   target="_blank"
                   rel="noreferrer noopener"
                   before={<Icon size="200" src={Icons.Code} />}
