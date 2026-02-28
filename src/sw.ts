@@ -42,9 +42,9 @@ async function cleanupDeadClients() {
 
 function setSession(
   clientId: string,
-  accessToken: any,
-  baseUrl: any,
-  userId: any,
+  accessToken: unknown,
+  baseUrl: unknown,
+  userId: unknown,
   notificationSettings?: {
     showPushNotificationContent?: boolean;
     appBaseUrl?: string;
@@ -55,7 +55,7 @@ function setSession(
     typeof baseUrl === 'string' &&
     typeof userId === 'string'
   ) {
-    const session = {
+    const session: SessionInfo = {
       accessToken,
       baseUrl,
       userId,
@@ -78,17 +78,15 @@ function setSession(
 }
 
 function requestSession(client: Client): Promise<SessionInfo | undefined> {
-  const promise =
-    clientToSessionPromise.get(client.id) ??
-    new Promise((resolve) => {
-      clientToResolve.set(client.id, resolve);
-      client.postMessage({ type: 'requestSession' });
-    });
+  const existing = clientToSessionPromise.get(client.id);
+  if (existing) return existing;
 
-  if (!clientToSessionPromise.has(client.id)) {
-    clientToSessionPromise.set(client.id, promise);
-  }
+  const promise = new Promise<SessionInfo | undefined>((resolve) => {
+    clientToResolve.set(client.id, resolve);
+    client.postMessage({ type: 'requestSession' });
+  });
 
+  clientToSessionPromise.set(client.id, promise);
   return promise;
 }
 
@@ -100,29 +98,51 @@ async function requestSessionWithTimeout(
   if (!client) return undefined;
 
   const sessionPromise = requestSession(client);
-
-  const timeout = new Promise<undefined>((resolve) => {
-    setTimeout(() => resolve(undefined), timeoutMs);
-  });
+  const timeout = new Promise<undefined>((resolve) =>
+    setTimeout(() => resolve(undefined), timeoutMs)
+  );
 
   return Promise.race([sessionPromise, timeout]);
 }
 
+/**
+ * Reliability improvements:
+ * - Support "clear cache" flows by allowing the app to force-activate a waiting SW.
+ * - Support "nuclear reset" from the app: unregister + delete caches + reload window clients.
+ */
+async function broadcastToClients(message: any) {
+  const clientList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+  await Promise.all(clientList.map((c) => (c as WindowClient).postMessage(message)));
+}
+
+async function deleteAllCaches() {
+  try {
+    const keys = await caches.keys();
+    await Promise.all(keys.map((k) => caches.delete(k)));
+  } catch {
+    // ignore
+  }
+}
+
 self.addEventListener('install', () => {
+  // Keep auto-activation behavior
   self.skipWaiting();
 });
 
 self.addEventListener('activate', (event: ExtendableEvent) => {
   event.waitUntil(
     (async () => {
+      // Take control immediately (helps ensure the new SW serves the newest precache)
       await self.clients.claim();
       await cleanupDeadClients();
+      // Optional: let the app know the SW activated (useful for "update available" UX)
+      await broadcastToClients({ type: 'swActivated', scope: self.registration.scope });
     })()
   );
 });
 
 /**
- * Receive session updates from clients
+ * Receive session updates from clients + control messages
  */
 self.addEventListener('message', (event: ExtendableMessageEvent) => {
   const client = event.source as Client | null;
@@ -130,6 +150,21 @@ self.addEventListener('message', (event: ExtendableMessageEvent) => {
 
   const { type, accessToken, baseUrl, userId, notificationSettings, token, url, pusherData } =
     event.data || {};
+
+  if (type === 'SKIP_WAITING') {
+    event.waitUntil(self.skipWaiting());
+    return;
+  }
+
+  if (type === 'NUKE_CACHES') {
+    event.waitUntil(
+      (async () => {
+        const keys = await caches.keys();
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      })()
+    );
+    return;
+  }
 
   if (type === 'togglePush') {
     if (!token || !url) return;
@@ -289,12 +324,8 @@ async function resolveNotificationUrl(pushData: any, session?: SessionInfo): Pro
   }
 
   if (typeof roomId === 'string' && roomId.trim()) {
-    const params: Record<string, string> = {
-      pushRoomId: roomId,
-    };
-    if (typeof eventId === 'string' && eventId.trim()) {
-      params.pushEventId = eventId;
-    }
+    const params: Record<string, string> = { pushRoomId: roomId };
+    if (typeof eventId === 'string' && eventId.trim()) params.pushEventId = eventId;
     return buildAppUrlWithQuery(session, params);
   }
 
@@ -347,98 +378,92 @@ const onPushNotification = async (event: PushEvent) => {
 
   if (!event.data) return;
 
-  if (event.data) {
-    const session = getAnySession();
-    let rawPayload = '';
-    try {
-      rawPayload = await event.data.text();
-      if (rawPayload) {
-        await persistPushDebug(rawPayload);
-      }
-    } catch {
-      // If it can't be parsed/handled reliably, ignore it (or log only)
-      return;
+  const session = getAnySession();
+  let rawPayload = '';
+
+  try {
+    rawPayload = await event.data.text();
+    if (rawPayload) {
+      await persistPushDebug(rawPayload);
     }
-
-    try {
-      const pushData = rawPayload ? JSON.parse(rawPayload) : await event.data.json();
-      const sender = pushData.sender ?? pushData.data?.sender ?? undefined;
-      if (sender && session?.userId && sender === session.userId) {
-        return;
-      }
-      const roomId = pushData.room_id ?? pushData.data?.room_id;
-      const eventId = pushData.event_id ?? pushData.data?.event_id;
-      if (!roomId || !eventId) {
-        if (typeof pushData.unread === 'number') {
-          try {
-            self.navigator.setAppBadge(pushData.unread);
-          } catch {}
-        }
-        return;
-      }
-      if (session && roomId && eventId) {
-        const senderFromEvent = await withTimeout(
-          fetchEventSender(session, roomId, eventId),
-          PUSH_EVENT_LOOKUP_TIMEOUT_MS
-        );
-        if (senderFromEvent && senderFromEvent === session.userId) {
-          return;
-        }
-      }
-      title = resolveNotificationTitle(pushData, title);
-      if (session?.showPushNotificationContent && !isInviteEvent(pushData)) {
-        options.body = resolveNotificationBody(pushData) ?? options.body;
-      } else {
-        options.body = isInviteEvent(pushData)
-          ? 'You have a new invitation!'
-          : 'You have a new message!';
-      }
-      options.icon = pushData.icon || options.icon;
-      options.badge = pushData.badge || options.badge;
-      options.data = {
-        ...options.data,
-        url: await resolveNotificationUrl(pushData, session),
-      };
-
-      if (pushData.image) options.image = pushData.image;
-      if (pushData.vibrate) options.vibrate = pushData.vibrate;
-      if (pushData.actions) options.actions = pushData.actions;
-      options.tag = roomId ? `room:${roomId}` : undefined;
-      if (typeof pushData.renotify === 'boolean') options.renotify = pushData.renotify;
-      if (typeof pushData.silent === 'boolean') options.silent = pushData.silent;
-
-      if (pushData.data) {
-        options.data = { ...options.data, ...pushData.data };
-      }
-      if (roomId) options.data = { ...options.data, pushRoomId: roomId };
-      if (eventId) options.data = { ...options.data, pushEventId: eventId };
-      if (isInviteEvent(pushData)) {
-        options.data = { ...options.data, pushAction: 'invites' };
-      }
-      if (typeof pushData.unread === 'number') {
-        try {
-          self.navigator.setAppBadge(pushData.unread);
-        } catch {
-          // Likely Firefox/Gecko-based and doesn't support badging API
-        }
-      } else {
-        try {
-          await self.navigator.clearAppBadge();
-        } catch {
-          // ignore if not supported
-        }
-      }
-    } catch {
-      // if (session?.showPushNotificationContent) {
-      //   options.body = rawPayload || options.body;
-      // } else {
-      //   options.body = 'You have a new message!';
-      // }
-      return;
-    }
+  } catch {
+    return;
   }
 
-  return self.registration.showNotification(title, options);
+  try {
+    const pushData = rawPayload ? JSON.parse(rawPayload) : await event.data.json();
+
+    // Avoid notifying on your own messages
+    const sender = pushData.sender ?? pushData.data?.sender ?? undefined;
+    if (sender && session?.userId && sender === session.userId) return;
+
+    const roomId = pushData.room_id ?? pushData.data?.room_id;
+    const eventId = pushData.event_id ?? pushData.data?.event_id;
+
+    // Badge-only updates
+    if (!roomId || !eventId) {
+      if (typeof pushData.unread === 'number') {
+        try {
+          (self.navigator as any).setAppBadge?.(pushData.unread);
+        } catch {}
+      }
+      return;
+    }
+
+    // Double-check sender from HS if we can
+    if (session && roomId && eventId) {
+      const senderFromEvent = await withTimeout(
+        fetchEventSender(session, roomId, eventId),
+        PUSH_EVENT_LOOKUP_TIMEOUT_MS
+      );
+      if (senderFromEvent && senderFromEvent === session.userId) return;
+    }
+
+    title = resolveNotificationTitle(pushData, title);
+
+    if (session?.showPushNotificationContent && !isInviteEvent(pushData)) {
+      options.body = resolveNotificationBody(pushData) ?? options.body;
+    } else {
+      options.body = isInviteEvent(pushData)
+        ? 'You have a new invitation!'
+        : 'You have a new message!';
+    }
+
+    options.icon = pushData.icon || options.icon;
+    options.badge = pushData.badge || options.badge;
+
+    options.data = {
+      ...options.data,
+      url: await resolveNotificationUrl(pushData, session),
+    };
+
+    if (pushData.image) options.image = pushData.image;
+    if (pushData.vibrate) options.vibrate = pushData.vibrate;
+    if (pushData.actions) options.actions = pushData.actions;
+
+    options.tag = roomId ? `room:${roomId}` : undefined;
+    if (typeof pushData.renotify === 'boolean') options.renotify = pushData.renotify;
+    if (typeof pushData.silent === 'boolean') options.silent = pushData.silent;
+
+    if (pushData.data) options.data = { ...options.data, ...pushData.data };
+    if (roomId) options.data = { ...options.data, pushRoomId: roomId };
+    if (eventId) options.data = { ...options.data, pushEventId: eventId };
+    if (isInviteEvent(pushData)) options.data = { ...options.data, pushAction: 'invites' };
+
+    if (typeof pushData.unread === 'number') {
+      try {
+        (self.navigator as any).setAppBadge?.(pushData.unread);
+      } catch {}
+    } else {
+      try {
+        await (self.navigator as any).clearAppBadge?.();
+      } catch {}
+    }
+
+    await self.registration.showNotification(title, options);
+  } catch {
+    return;
+  }
 };
 
 self.addEventListener('push', (event: PushEvent) => event.waitUntil(onPushNotification(event)));
@@ -457,6 +482,7 @@ self.addEventListener('notificationclick', (event: NotificationEvent) => {
         type: 'window',
         includeUncontrolled: true,
       });
+
       for (const client of clientList) {
         if ('postMessage' in client) {
           (client as WindowClient).postMessage({
@@ -471,6 +497,7 @@ self.addEventListener('notificationclick', (event: NotificationEvent) => {
           return;
         }
       }
+
       if (self.clients.openWindow) {
         await self.clients.openWindow(targetUrl);
       }
@@ -478,6 +505,9 @@ self.addEventListener('notificationclick', (event: NotificationEvent) => {
   );
 });
 
+/**
+ * Workbox precache
+ */
 if (self.__WB_MANIFEST) {
   precacheAndRoute(self.__WB_MANIFEST);
 }
