@@ -50,6 +50,7 @@ import { useMessageLayoutItems } from '../../../hooks/useMessageLayout';
 import { useMessageSpacingItems } from '../../../hooks/useMessageSpacing';
 import { useDateFormatItems } from '../../../hooks/useDateFormat';
 import { SequenceCardStyle } from '../styles.css';
+import { CustomThemeManager } from './CustomThemeManager';
 
 type ThemeSelectorProps = {
   themeNames: Record<string, string>;
@@ -350,6 +351,8 @@ function Appearance() {
       <SequenceCard className={SequenceCardStyle} variant="SurfaceVariant" direction="Column">
         <SettingTile title="Page Zoom" after={<PageZoomInput />} />
       </SequenceCard>
+
+      <CustomThemeManager />
     </Box>
   );
 }
