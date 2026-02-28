@@ -13,7 +13,15 @@ import {
 import { logger } from 'matrix-js-sdk/lib/logger';
 import { sleep } from 'matrix-js-sdk/lib/utils';
 
-const INITIAL_SYNC_TIMEOUT_MS = 20000;
+const INITIAL_SYNC_TIMEOUT_MS = 20_000;
+
+const WATCHDOG_CHECK_INTERVAL_MS = 15_000;
+const WATCHDOG_STUCK_THRESHOLD_MS = 60_000; // no Complete for this long => restart
+const WATCHDOG_RESTART_COOLDOWN_MS = 30_000;
+
+const RESUME_PROGRESS_TIMEOUT_MS = 8_000;
+
+const UNENCRYPTED_SUB_KEY = 'unencrypted_lazy_load';
 
 /**
  * Core state events required across the application for proper rendering.
@@ -49,9 +57,6 @@ const BASE_STATE_REQUIREMENTS: [string, string][] = [
   ['com.famedly.marked_unread', MSC3575_WILDCARD],
 ];
 
-// IMPORTANT: Always request BASE_STATE_REQUIREMENTS for subscriptions.
-// Your old UNENCRYPTED subscription did NOT include these, which can lead to
-// missing/misaligned room state and weird UI behavior.
 const SUBSCRIPTION_BASE = {
   timeline_limit: 50,
   required_state: BASE_STATE_REQUIREMENTS,
@@ -61,39 +66,20 @@ const SUBSCRIPTION_BASE = {
   },
 };
 
-// Keep custom subscription support, but make them SAFE (include BASE_STATE_REQUIREMENTS).
 const SUBSCRIPTIONS = {
-  /**
-   * Default subscription should be "safe + reasonably small":
-   * - BASE_STATE_REQUIREMENTS (room metadata, encryption state, etc.)
-   * - LAZY members so sender displaynames/avatars resolve as events arrive.
-   */
   DEFAULT: {
     ...SUBSCRIPTION_BASE,
     required_state: [...BASE_STATE_REQUIREMENTS, [EventType.RoomMember, MSC3575_STATE_KEY_LAZY]],
   },
-
-  /**
-   * Unencrypted can also use lazy members, but MUST keep BASE_STATE_REQUIREMENTS.
-   * (If you want to further reduce bandwidth for unencrypted rooms, do it with
-   * timeline_limit or by trimming BASE_STATE_REQUIREMENTS, not by dropping it.)
-   */
   UNENCRYPTED: {
     ...SUBSCRIPTION_BASE,
     required_state: [...BASE_STATE_REQUIREMENTS, [EventType.RoomMember, MSC3575_STATE_KEY_LAZY]],
   },
-
-  /**
-   * Encrypted rooms do NOT need wildcard required_state. That is extremely heavy.
-   * Keep BASE_STATE_REQUIREMENTS + lazy members.
-   */
   ENCRYPTED: {
     ...SUBSCRIPTION_BASE,
     required_state: [...BASE_STATE_REQUIREMENTS, [EventType.RoomMember, MSC3575_STATE_KEY_LAZY]],
   },
 } as const;
-
-const UNENCRYPTED_SUB_KEY = 'unencrypted_lazy_load';
 
 const INITIAL_LIST_CONFIGS: Record<string, MSC3575List> = {
   spaces: {
@@ -144,38 +130,43 @@ export const synchronizeGlobalEmotes = async (client: MatrixClient) => {
 
   const rooms = Object.keys(emoteEvent.getContent()?.rooms || {});
   const syncInstance = SlidingSyncController.getInstance().syncInstance;
+  if (!syncInstance || rooms.length === 0) return;
 
-  if (rooms.length > 0 && syncInstance) {
-    const activeSubs = syncInstance.getRoomSubscriptions();
-    rooms.forEach((id) => activeSubs.add(id));
-    // This call is "void" typed in some versions, but does async work internally.
-    syncInstance.modifyRoomSubscriptions(activeSubs);
-    logger.debug(`[SlidingSync] Subscribed to ${rooms.length} global emote rooms.`);
-  }
+  const activeSubs = syncInstance.getRoomSubscriptions();
+  rooms.forEach((id) => activeSubs.add(id));
+
+  // Some SDK versions type this as void; still performs async work.
+  await Promise.resolve(syncInstance.modifyRoomSubscriptions(activeSubs) as any);
+  logger.debug(`[SlidingSync] Subscribed to ${rooms.length} global emote rooms.`);
 };
 
 export class SlidingSyncController {
-  public static isSupportedOnServer: boolean = false;
+  public static isSupportedOnServer = false;
 
   private static instance: SlidingSyncController;
 
   public syncInstance?: SlidingSync;
 
   private matrixClient?: MatrixClient;
+
   private initializationResolve?: () => void;
   private initializationPromise: Promise<void>;
 
   private slidingSyncEnabled = false;
   private slidingSyncDisabled = false;
 
-  private lastRequestFinishedAt = 0;
+  // Serialize mutations that can race (setListRanges, setList, modifyRoomSubscriptions, etc.)
+  private op: Promise<void> = Promise.resolve();
+
+  // Lifecycle / watchdog tracking
   private lastCompleteAt = 0;
-  private lastErrorAt = 0;
+  private lastRequestFinishedAt = 0;
+  private lastRestartAt = 0;
+
+  private lifecycleHandler?: (state: SlidingSyncState, resp: any, err?: Error) => void;
+  private watchdogIntervalId?: number;
 
   private inResume: Promise<void> | null = null;
-
-  // serialize mutations that can race (setListRanges, setList, modifyRoomSubscriptions, etc.)
-  private op: Promise<void> = Promise.resolve();
 
   private constructor() {
     this.initializationPromise = new Promise((resolve) => {
@@ -192,7 +183,6 @@ export class SlidingSyncController {
 
   private enqueue<T>(fn: () => T | Promise<T>): Promise<T> {
     const next = this.op.then(() => fn());
-    // keep the chain alive regardless of success/failure
     this.op = Promise.resolve(next).then(
       () => undefined,
       () => undefined
@@ -201,11 +191,63 @@ export class SlidingSyncController {
   }
 
   /**
+   * Call on logout / full reload to prevent leaked intervals/listeners.
+   */
+  public dispose(): void {
+    const sync = this.syncInstance;
+
+    if (this.watchdogIntervalId) {
+      window.clearInterval(this.watchdogIntervalId);
+      this.watchdogIntervalId = undefined;
+    }
+
+    if (sync && this.lifecycleHandler) {
+      sync.off(SlidingSyncEvent.Lifecycle, this.lifecycleHandler as any);
+    }
+    this.lifecycleHandler = undefined;
+
+    try {
+      sync?.stop();
+    } catch {
+      // ignore
+    }
+
+    this.syncInstance = undefined;
+    this.matrixClient = undefined;
+
+    this.slidingSyncEnabled = false;
+    this.slidingSyncDisabled = false;
+
+    // reset init promise for next session if needed
+    this.initializationPromise = new Promise((resolve) => {
+      this.initializationResolve = resolve;
+    });
+
+    this.lastCompleteAt = 0;
+    this.lastRequestFinishedAt = 0;
+    this.lastRestartAt = 0;
+    this.inResume = null;
+    this.op = Promise.resolve();
+  }
+
+  /**
    * Initializes the SlidingSync instance and triggers background list population.
+   * IMPORTANT: This should be called only if server support is detected and you plan to pass
+   * the returned SlidingSync instance into mx.startClient({ slidingSync }).
    */
   public async initialize(client: MatrixClient): Promise<SlidingSync> {
     this.matrixClient = client;
     this.slidingSyncEnabled = true;
+    this.slidingSyncDisabled = false;
+
+    // If we’re re-initializing in same page session, clean previous listeners/intervals.
+    if (this.watchdogIntervalId) {
+      window.clearInterval(this.watchdogIntervalId);
+      this.watchdogIntervalId = undefined;
+    }
+    if (this.syncInstance && this.lifecycleHandler) {
+      this.syncInstance.off(SlidingSyncEvent.Lifecycle, this.lifecycleHandler as any);
+    }
 
     const configuredLists = new Map(Object.entries(INITIAL_LIST_CONFIGS));
 
@@ -222,23 +264,64 @@ export class SlidingSyncController {
     this.syncInstance = sync;
     this.initializationResolve?.();
 
-    sync.on(SlidingSyncEvent.Lifecycle, (state, _resp, err) => {
-      if (err) this.lastErrorAt = Date.now();
+    logger.info(`[SlidingSync] Activated at ${client.baseUrl}`);
 
-      // mark any “the request finished” as progress (more reliable than Complete-only)
+    // Track progress + errors from lifecycle events.
+    this.lastCompleteAt = Date.now();
+
+    this.lifecycleHandler = (state: SlidingSyncState, _resp: any, err?: Error) => {
+      if (err) {
+        logger.warn('[SlidingSync] lifecycle error', { state, err });
+        return;
+      }
       if (state === SlidingSyncState.RequestFinished) {
         this.lastRequestFinishedAt = Date.now();
       }
       if (state === SlidingSyncState.Complete) {
         this.lastCompleteAt = Date.now();
       }
-    });
+    };
 
-    logger.info(`[SlidingSync] Activated at ${client.baseUrl}`);
+    sync.on(SlidingSyncEvent.Lifecycle, this.lifecycleHandler as any);
 
+    // Watchdog: restart if we stop seeing completes for too long.
+    this.watchdogIntervalId = window.setInterval(() => {
+      if (document.visibilityState === 'hidden') return;
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+
+      const now = Date.now();
+      const age = now - this.lastCompleteAt;
+      if (age <= WATCHDOG_STUCK_THRESHOLD_MS) return;
+
+      if (now - this.lastRestartAt < WATCHDOG_RESTART_COOLDOWN_MS) return;
+      this.lastRestartAt = now;
+
+      logger.warn('[SlidingSync] appears stuck; restarting', { ageMs: age });
+
+      try {
+        sync.stop();
+      } catch {}
+      try {
+        sync.start();
+      } catch {}
+
+      // give it a fresh grace period
+      this.lastCompleteAt = now;
+      this.lastRequestFinishedAt = now;
+    }, WATCHDOG_CHECK_INTERVAL_MS);
+
+    // Background list expansion
     this.executeBackgroundSpidering(sync, 100, 0);
 
     return sync;
+  }
+
+  public disable(): void {
+    // If already enabled (initialize called), don’t “disable” mid-flight here.
+    if (this.slidingSyncEnabled || this.slidingSyncDisabled) return;
+
+    this.slidingSyncDisabled = true;
+    this.initializationResolve?.(); // unblock focusRoom callers
   }
 
   /**
@@ -264,7 +347,6 @@ export class SlidingSyncController {
           ranges: [[0, 50]],
           sort: ['by_notification_level', 'by_recency'],
           timeline_limit: 1,
-          // IMPORTANT: include BASE_STATE_REQUIREMENTS here too
           required_state: [
             ...BASE_STATE_REQUIREMENTS,
             [EventType.RoomMember, MSC3575_STATE_KEY_LAZY],
@@ -288,25 +370,18 @@ export class SlidingSyncController {
 
   /**
    * Forces immediate state population when a user explicitly navigates to a room.
+   * Safe to call even when sliding sync is not active; it becomes a fast no-op.
    */
   public async focusRoom(roomId: string): Promise<void> {
-    // If sliding sync is known disabled, fast no-op.
     if (this.slidingSyncDisabled) return;
-
-    // If sliding sync isn’t enabled yet and we don’t have a syncInstance,
-    // don’t block forever waiting for something that may never start.
     if (!this.slidingSyncEnabled && !this.syncInstance) return;
 
-    // Otherwise wait for init to complete (or disable() to resolve it)
     await this.initializationPromise;
-
-    if (!this.syncInstance) return;
 
     const sync = this.syncInstance;
     const client = this.matrixClient;
     if (!sync || !client) return;
 
-    // Snapshot subscriptions from the sync instance
     const subs = sync.getRoomSubscriptions();
     if (subs.has(roomId)) return;
 
@@ -314,19 +389,23 @@ export class SlidingSyncController {
 
     const roomContext = client.getRoom(roomId);
 
-    // Decide whether to use the unencrypted custom subscription
     const crypto = client.getCrypto();
     const isEncrypted = crypto ? await crypto.isEncryptionEnabledInRoom(roomId) : false;
 
-    // Serialize all sync mutations (useCustomSubscription + modifyRoomSubscriptions)
     await this.enqueue(async () => {
       if (!isEncrypted) {
         sync.useCustomSubscription(roomId, UNENCRYPTED_SUB_KEY);
       }
-      await sync.modifyRoomSubscriptions(subs);
+      await Promise.resolve(sync.modifyRoomSubscriptions(subs) as any);
     });
 
-    // Wait for the JS SDK to emit the room if it's completely new to the client
+    // Verify and retry once (defensive against races/overwrites)
+    if (!sync.getRoomSubscriptions().has(roomId)) {
+      const subs2 = sync.getRoomSubscriptions();
+      subs2.add(roomId);
+      await Promise.resolve(sync.modifyRoomSubscriptions(subs2) as any);
+    }
+
     if (!roomContext) {
       await new Promise<void>((resolve) => {
         const onRoomAdded = (r: Room) => {
@@ -347,24 +426,16 @@ export class SlidingSyncController {
     const isSupported = await client?.doesServerSupportUnstableFeature(
       'org.matrix.simplified_msc3575'
     );
+
     SlidingSyncController.isSupportedOnServer = !!isSupported;
 
     if (isSupported) {
       logger.debug('[SlidingSync] Native org.matrix.simplified_msc3575 support detected.');
-    }
-
-    if (!isSupported) {
+    } else {
       this.disable();
     }
 
     return SlidingSyncController.isSupportedOnServer;
-  }
-
-  public disable(): void {
-    if (this.slidingSyncEnabled || this.slidingSyncDisabled) return;
-
-    this.slidingSyncDisabled = true;
-    this.initializationResolve?.(); // unblock focusRoom callers
   }
 
   private waitForNextRequestFinished(afterMs: number, timeoutMs: number): Promise<boolean> {
@@ -377,7 +448,7 @@ export class SlidingSyncController {
       const timer = window.setTimeout(() => {
         if (done) return;
         done = true;
-        sync.off(SlidingSyncEvent.Lifecycle, onLife);
+        sync.off(SlidingSyncEvent.Lifecycle, onLife as any);
         resolve(false);
       }, timeoutMs);
 
@@ -392,18 +463,20 @@ export class SlidingSyncController {
         if (done) return;
         done = true;
         window.clearTimeout(timer);
-        sync.off(SlidingSyncEvent.Lifecycle, onLife);
+        sync.off(SlidingSyncEvent.Lifecycle, onLife as any);
         resolve(true);
       };
 
-      sync.on(SlidingSyncEvent.Lifecycle, onLife);
+      sync.on(SlidingSyncEvent.Lifecycle, onLife as any);
     });
   }
 
+  /**
+   * For iOS PWA / flaky networks: when coming back to foreground, force a resend and if
+   * we don’t observe progress, do a controlled restart.
+   */
   public async resumeFromAppForeground(): Promise<void> {
     if (this.slidingSyncDisabled) return;
-
-    // serialize + dedupe (focus/visibility/online can all fire together)
     if (this.inResume) return this.inResume;
 
     this.inResume = (async () => {
@@ -411,26 +484,37 @@ export class SlidingSyncController {
       const sync = this.syncInstance;
       if (!sync) return;
 
-      const now = Date.now();
       const lastProgress = Math.max(this.lastRequestFinishedAt, this.lastCompleteAt);
 
-      // Always do a light “poke” on foreground.
-      sync.resend(); // supported API :contentReference[oaicite:7]{index=7}
+      // Light poke
+      try {
+        sync.resend();
+      } catch (e) {
+        logger.debug('[SlidingSync] resend() failed (ignored)', e);
+      }
 
-      // Wait briefly to see if we got an actual request-finished tick.
-      const progressed = await this.waitForNextRequestFinished(lastProgress, 8000);
-
+      const progressed = await this.waitForNextRequestFinished(
+        lastProgress,
+        RESUME_PROGRESS_TIMEOUT_MS
+      );
       if (progressed) return;
 
-      // If we didn’t progress, we’re likely stalled (common on iOS PWA resume).
-      // Do a controlled restart of the SlidingSync loop.
+      logger.info('[SlidingSync] No progress after resume; restarting sliding sync.');
+
       try {
-        sync.stop(); // supported API :contentReference[oaicite:8]{index=8}
-        void sync.start().catch((e) => logger.warn('[SlidingSync] restart start() failed', e)); // supported API :contentReference[oaicite:9]{index=9}
-        logger.info('[SlidingSync] Restarted sliding sync after stalled resume.');
+        sync.stop();
+      } catch {}
+
+      try {
+        sync.start();
       } catch (e) {
-        logger.warn('[SlidingSync] restart failed', e);
+        logger.warn('[SlidingSync] restart start() failed', e);
       }
+
+      const now = Date.now();
+      this.lastRestartAt = now;
+      this.lastCompleteAt = now;
+      this.lastRequestFinishedAt = now;
     })().finally(() => {
       this.inResume = null;
     });
@@ -465,20 +549,17 @@ export class SlidingSyncController {
           const expandedBound = currentBound + batchLimit;
           boundsTracker.set(listName, expandedBound);
 
-          // Serialize list range updates to avoid racing other sync mutations
           await this.enqueue(() => sync.setListRanges(listName, [[0, expandedBound]]));
-
           expansionsOccurred = true;
         }
       }
 
-      // Unsubscribe once all lists have fully paginated
       if (!expansionsOccurred) {
-        sync.off(SlidingSyncEvent.Lifecycle, handleSyncLifecycle);
+        sync.off(SlidingSyncEvent.Lifecycle, handleSyncLifecycle as any);
         logger.debug('[SlidingSync] Background spidering complete.');
       }
     };
 
-    sync.on(SlidingSyncEvent.Lifecycle, handleSyncLifecycle);
+    sync.on(SlidingSyncEvent.Lifecycle, handleSyncLifecycle as any);
   }
 }

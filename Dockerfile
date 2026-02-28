@@ -6,8 +6,8 @@ WORKDIR /src
 COPY .npmrc package.json package-lock.json /src/
 RUN npm ci
 COPY . /src/
-ARG VITE_BUILD_HASH
 ARG GIT_SHA
+ARG VITE_BUILD_HASH
 ENV VITE_BUILD_HASH=${VITE_BUILD_HASH}
 ENV GIT_SHA=${GIT_SHA}
 ENV NODE_OPTIONS=--max_old_space_size=4096

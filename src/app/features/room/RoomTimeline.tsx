@@ -202,12 +202,15 @@ const timelineSortedCache = new WeakMap<
 const getTimelineEventsOrdered = (t: EventTimeline): MatrixEvent[] => {
   const evs = t.getEvents();
   const first = evs[0];
+  const mid = evs[Math.floor(evs.length / 2)];
   const last = evs[evs.length - 1];
 
   const lastKey = [
     evs.length,
     first?.getId() ?? '',
     first?.getTs() ?? 0,
+    mid?.getId() ?? '',
+    mid?.getTs() ?? 0,
     last?.getId() ?? '',
     last?.getTs() ?? 0,
   ].join('|');
@@ -378,6 +381,7 @@ const useTimelinePagination = (
 
     return async (backwards: boolean) => {
       if (fetching) return;
+
       const { linkedTimelines: lTimelines } = timelineRef.current;
       const timelinesEventsCount = lTimelines.map(timelineToEventsCount);
 
@@ -387,6 +391,7 @@ const useTimelinePagination = (
       const paginationToken = timelineToPaginate.getPaginationToken(
         backwards ? Direction.Backward : Direction.Forward
       );
+
       if (
         !paginationToken &&
         getTimelinesEventsCount(lTimelines) !==
@@ -397,31 +402,30 @@ const useTimelinePagination = (
       }
 
       fetching = true;
-      const [err] = await to(
-        mx.paginateEventTimeline(timelineToPaginate, {
-          backwards,
-          limit,
-        })
-      );
-      if (err) {
-        // TODO: handle pagination error.
-        return;
-      }
-      const fetchedTimeline =
-        timelineToPaginate.getNeighbouringTimeline(
-          backwards ? Direction.Backward : Direction.Forward
-        ) ?? timelineToPaginate;
-      // Decrypt all event ahead of render cycle
-      const roomId = fetchedTimeline.getRoomId();
-      const room = roomId ? mx.getRoom(roomId) : null;
+      try {
+        const [err] = await to(mx.paginateEventTimeline(timelineToPaginate, { backwards, limit }));
+        if (err) {
+          logger.warn('[RoomTimeline] pagination failed', err);
+          return;
+        }
 
-      if (room?.hasEncryptionStateEvent()) {
-        await to(decryptAllTimelineEvent(mx, fetchedTimeline));
-      }
+        const fetchedTimeline =
+          timelineToPaginate.getNeighbouringTimeline(
+            backwards ? Direction.Backward : Direction.Forward
+          ) ?? timelineToPaginate;
 
-      fetching = false;
-      if (alive()) {
-        recalibratePagination(lTimelines, timelinesEventsCount, backwards);
+        // decrypt ahead of render cycle (don’t let errors wedge pagination)
+        const roomId = fetchedTimeline.getRoomId();
+        const r = roomId ? mx.getRoom(roomId) : null;
+        if (r?.hasEncryptionStateEvent()) {
+          await to(decryptAllTimelineEvent(mx, fetchedTimeline));
+        }
+
+        if (alive()) {
+          recalibratePagination(lTimelines, timelinesEventsCount, backwards);
+        }
+      } finally {
+        fetching = false;
       }
     };
   }, [mx, alive, setTimeline, limit]);
@@ -1767,25 +1771,27 @@ export function RoomTimeline({
 
     // Deterministic adjacency: derive "previous event" from absolute index, not render order.
     const prevEvent = getPrevEventForIndex(timeline.linkedTimelines, item);
-
     const newDivider = typeof readMarkerAbsIndex === 'number' && item === readMarkerAbsIndex + 1;
 
     const prevTs = prevEvent?.getTs();
     const curTs = mEvent.getTs();
-    // Matrix timeline order can be correct even when timestamps are non-monotonic.
-    // Guard grouping UI (day dividers/collapsing) against "time going backwards".
-    const tsBackwards = typeof prevTs === 'number' && prevTs > curTs;
 
-    const dayDivider = !!prevEvent && !tsBackwards && !inSameDay(prevTs!, curTs);
+    const hasTs = typeof prevTs === 'number' && typeof curTs === 'number';
+
+    // Guard UI grouping against time going backwards OR missing timestamps.
+    const tsBackwards = hasTs ? prevTs > curTs : false;
+
+    const dayDivider = !!prevEvent && hasTs && !tsBackwards && !inSameDay(prevTs, curTs);
 
     const collapsed =
       !!prevEvent &&
+      hasTs &&
       !dayDivider &&
       !tsBackwards &&
       (!newDivider || eventSender === mx.getUserId()) &&
       prevEvent.getSender() === eventSender &&
       prevEvent.getType() === mEvent.getType() &&
-      minuteDifference(prevTs!, curTs) < 2;
+      minuteDifference(prevTs, curTs) < 2;
 
     const eventJSX = reactionOrEditEvent(mEvent)
       ? null
@@ -1810,6 +1816,8 @@ export function RoomTimeline({
         </MessageBase>
       ) : null;
 
+    const ts = mEvent.getTs();
+
     const dayDividerJSX =
       dayDivider && eventJSX ? (
         <MessageBase space={messageSpacing}>
@@ -1817,9 +1825,10 @@ export function RoomTimeline({
             <Badge as="span" size="500" variant="Secondary" fill="None" radii="300">
               <Text size="L400">
                 {(() => {
-                  if (today(mEvent.getTs())) return 'Today';
-                  if (yesterday(mEvent.getTs())) return 'Yesterday';
-                  return timeDayMonthYear(mEvent.getTs());
+                  if (!ts) return 'Unknown date';
+                  if (today(ts)) return 'Today';
+                  if (yesterday(ts)) return 'Yesterday';
+                  return timeDayMonthYear(ts);
                 })()}
               </Text>
             </Badge>
