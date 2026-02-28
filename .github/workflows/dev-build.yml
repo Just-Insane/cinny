@@ -10,7 +10,7 @@ on:
 
 jobs:
   deploy-and-tarball:
-    name: Netlify deploy and tarball
+    name: build and tarball
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
