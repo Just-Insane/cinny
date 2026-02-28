@@ -56,7 +56,7 @@ export function About({ requestClose }: AboutProps) {
                   <Box gap="200" wrap="Wrap">
                     <Button
                       as="a"
-                      href="https://github.com/cinnyapp/cinny"
+                      href="https://github.com/Just-Insane/cinny"
                       rel="noreferrer noopener"
                       target="_blank"
                       variant="Secondary"

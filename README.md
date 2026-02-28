@@ -29,15 +29,15 @@ A Matrix client focusing primarily on simple, elegant and secure interface. The 
 - [Roadmap](https://github.com/orgs/cinnyapp/projects/1)
 - [Contributing](./CONTRIBUTING.md)
 
-<img align="center" src="https://raw.githubusercontent.com/cinnyapp/cinny-site/main/assets/preview2-light.png" height="380">
+<img align="center" src="https://raw.githubusercontent.com/Just-Insane/cinny-site/main/assets/preview2-light.png" height="380">
 
 ## Getting started
 The web app is available at [app.cinny.in](https://app.cinny.in/) and gets updated on each new release. The `dev` branch is continuously deployed at [dev.cinny.in](https://dev.cinny.in) but keep in mind that it could have things broken.
 
-You can also download our desktop app from the [cinny-desktop repository](https://github.com/cinnyapp/cinny-desktop).
+You can also download our desktop app from the [cinny-desktop repository](https://github.com/Just-Insane/cinny-desktop).
 
 ## Self-hosting
-To host Cinny on your own, simply download the tarball from [GitHub releases](https://github.com/cinnyapp/cinny/releases/latest), and serve the files from `dist/` using your preferred webserver. Alternatively, you can just pull the docker image from [DockerHub](https://hub.docker.com/r/ajbura/cinny) or [GitHub Container Registry](https://github.com/cinnyapp/cinny/pkgs/container/cinny).
+To host Cinny on your own, simply download the tarball from [GitHub releases](https://github.com/Just-Insane/cinny/releases/latest), and serve the files from `dist/` using your preferred webserver. Alternatively, you can just pull the docker image from [DockerHub](https://hub.docker.com/r/ajbura/cinny) or [GitHub Container Registry](https://github.com/Just-Insane/cinny/pkgs/container/cinny).
 
 * The default homeservers and explore pages are defined in [`config.json`](config.json).
 
