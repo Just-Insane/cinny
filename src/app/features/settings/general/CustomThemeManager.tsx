@@ -1,5 +1,5 @@
 import React from 'react';
-import { Box, Button, Text, color } from 'folds';
+import { Box, Button, Icon, IconButton, Icons, Text, color } from 'folds';
 import { SequenceCard } from '../../../components/sequence-card';
 import { SettingTile } from '../../../components/setting-tile';
 import { SequenceCardStyle } from '../styles.css';
@@ -11,11 +11,11 @@ export function CustomThemeManager() {
 
   return (
     <Box direction="Column" gap="100">
-      <Box alignItems="Center" justifyContent="SpaceBetween">
+      <Box alignItems="Center" gap="200">
         <Text size="L400">Custom Themes</Text>
-        <Button size="300" variant="Secondary" fill="Soft" radii="300" onClick={triggerUpload}>
-          <Text size="B300">Upload YML</Text>
-        </Button>
+        <IconButton size="300" variant="Surface" radii="300" onClick={triggerUpload}>
+          <Icon size="200" src={Icons.Plus} />
+        </IconButton>
         <input
           ref={fileInputRef}
           type="file"
