@@ -43,6 +43,22 @@
 
   --pwa-canvas-bg: #1a1916;
 }
+.rosePine-Theme {
+  --tc-link: hsl(213deg 100% 80%);
+
+  --mx-uc-1: hsl(208, 100%, 75%);
+  --mx-uc-2: hsl(301, 100%, 80%);
+  --mx-uc-3: hsl(163, 100%, 70%);
+  --mx-uc-4: hsl(343, 100%, 75%);
+  --mx-uc-5: hsl(24, 100%, 70%);
+  --mx-uc-6: hsl(181, 100%, 60%);
+  --mx-uc-7: hsl(243, 100%, 80%);
+  --mx-uc-8: hsl(94, 100%, 80%);
+
+  --font-secondary: 'InterVariable', var(--font-emoji), sans-serif;
+
+  --pwa-canvas-bg: #191724;
+}
 
 html {
   height: 100%;
