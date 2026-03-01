@@ -3,6 +3,7 @@ import React, {
   MouseEventHandler,
   useCallback,
   useEffect,
+  useLayoutEffect,
   useState,
 } from 'react';
 import {
@@ -206,7 +207,14 @@ export const MessageEditor = as<'div', MessageEditorProps>(
       moveCursor(editor);
     };
 
-    useEffect(() => {
+    // we use a layout effect instead of a normal effect so the focus is
+    // moved into the editor *before* the browser handles any subsequent key
+    // events.  previously there was a small window after mounting where the
+    // editor existed but did not yet have focus; typing in that gap could hit
+    // global shortcuts and lead to room navigation.  layout effects run
+    // synchronously after DOM mutations, which is the earliest moment we can
+    // safely call `ReactEditor.focus`.
+    useLayoutEffect(() => {
       const [body, customHtml] = getPrevBodyAndFormattedBody();
 
       const initialValue =
@@ -220,7 +228,13 @@ export const MessageEditor = as<'div', MessageEditorProps>(
       });
 
       editor.insertFragment(initialValue);
-      if (!mobileOrTablet()) ReactEditor.focus(editor);
+      if (!mobileOrTablet()) {
+        ReactEditor.focus(editor);
+        // as an extra precaution, also schedule a tiny timeout in case the
+        // editor mounting is delayed by React batching; this handles the case
+        // where the user types literally immediately after the click/up-arrow.
+        setTimeout(() => ReactEditor.focus(editor), 0);
+      }
     }, [editor, getPrevBodyAndFormattedBody, isMarkdown]);
 
     useEffect(() => {

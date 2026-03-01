@@ -77,8 +77,8 @@ const deleteUnreadInfo = (roomToUnread: RoomToUnread, allParents: Set<string>, r
   roomToUnread.delete(roomId);
 
   allParents.forEach((parentId) => {
-  const oldParentUnread = roomToUnread.get(parentId);
-  if (!oldParentUnread) return;
+    const oldParentUnread = roomToUnread.get(parentId);
+    if (!oldParentUnread) return;
     const newFrom = new Set([...(oldParentUnread.from ?? [roomId])]);
     newFrom.delete(roomId);
     if (newFrom.size === 0) {
@@ -238,8 +238,19 @@ export const useBindRoomToUnreadAtom = (mx: MatrixClient, unreadAtom: typeof roo
       }
     };
     mx.on(RoomEvent.Receipt, handleReceipt);
+
+    // also listen for manual mark-as-read notifications triggered by
+    // `markAsRead` so that the UI clears immediately, even if the server
+    // hasn't echoed a receipt yet.
+    const handleManual = (roomId: string) => {
+      setUnreadAtom({ type: 'DELETE', roomId });
+    };
+    // our custom event isn't part of matrix-js-sdk's official typings
+    (mx as any).on('internal:markAsRead', handleManual as any);
+
     return () => {
       mx.removeListener(RoomEvent.Receipt, handleReceipt);
+      (mx as any).removeListener('internal:markAsRead', handleManual as any);
     };
   }, [mx, setUnreadAtom]);
 

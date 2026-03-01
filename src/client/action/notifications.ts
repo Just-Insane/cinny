@@ -18,8 +18,11 @@ export async function markAsRead(mx: MatrixClient, roomId: string, privateReceip
 
   let latestEvent = getLatestValidEvent();
   if (!latestEvent) {
+    // similar reasoning as in the application util: include thread roots when the
+    // user explicitly asks us to mark as read so the server-side marker actually
+    // advances.
     const fallback = room.getLastLiveEvent();
-    if (fallback && !fallback.threadRootId) {
+    if (fallback) {
       latestEvent = fallback;
     }
   }
@@ -34,4 +37,7 @@ export async function markAsRead(mx: MatrixClient, roomId: string, privateReceip
   } else {
     await mx.setRoomReadMarkers(roomId, latestEvent.getId()!, latestEvent, undefined);
   }
+
+  // notify our state logic so the room is cleared locally immediately
+  (mx as any).emit('internal:markAsRead', roomId);
 }
