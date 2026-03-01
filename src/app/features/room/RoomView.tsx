@@ -89,9 +89,9 @@ export function RoomView({ room, eventId }: { room: Room; eventId?: string }) {
 
   useEffect(() => {
     let cancelled = false;
+    const controller = SlidingSyncController.getInstance();
 
     const run = async () => {
-      const controller = SlidingSyncController.getInstance();
       try {
         await controller.focusRoom(room.roomId);
       } catch (err) {
@@ -105,6 +105,8 @@ export function RoomView({ room, eventId }: { room: Room; eventId?: string }) {
 
     return () => {
       cancelled = true;
+      // ensure we remove the subscription when the view unmounts
+      void controller.unfocusRoom(room.roomId);
     };
   }, [room.roomId]);
 

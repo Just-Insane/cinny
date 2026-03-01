@@ -206,6 +206,17 @@ export class SlidingSyncController {
     }
     this.lifecycleHandler = undefined;
 
+    // nuke subscriptions on dispose so server no longer sends us data
+    if (sync) {
+      try {
+        // typings may not expose this helper method in older SDK versions
+        // @ts-ignore
+        (sync as any).setRoomSubscriptions(new Set());
+      } catch {
+        // ignore
+      }
+    }
+
     try {
       sync?.stop();
     } catch {
@@ -251,20 +262,31 @@ export class SlidingSyncController {
 
     const configuredLists = new Map(Object.entries(INITIAL_LIST_CONFIGS));
 
-    const sync = new SlidingSync(
-      client.baseUrl,
-      configuredLists,
-      SUBSCRIPTIONS.DEFAULT,
-      client,
-      INITIAL_SYNC_TIMEOUT_MS
-    );
+    let sync: SlidingSync;
 
-    sync.addCustomSubscription(UNENCRYPTED_SUB_KEY, SUBSCRIPTIONS.UNENCRYPTED);
+    try {
+      sync = new SlidingSync(
+        client.baseUrl,
+        configuredLists,
+        // cast to any because the type is readonly and the SDK expects mutable
+        SUBSCRIPTIONS.DEFAULT as any,
+        client,
+        INITIAL_SYNC_TIMEOUT_MS
+      );
 
-    this.syncInstance = sync;
+      // @ts-ignore readonly vs mutable mismatch
+      sync.addCustomSubscription(UNENCRYPTED_SUB_KEY, SUBSCRIPTIONS.UNENCRYPTED as any);
+
+      this.syncInstance = sync;
+      logger.info(`[SlidingSync] Activated at ${client.baseUrl}`);
+    } catch (err) {
+      // make sure callers waiting for initialization are unblocked even on error
+      this.initializationResolve?.();
+      throw err;
+    }
+
+    // signal that initialization has completed successfully
     this.initializationResolve?.();
-
-    logger.info(`[SlidingSync] Activated at ${client.baseUrl}`);
 
     // Track progress + errors from lifecycle events.
     this.lastCompleteAt = Date.now();
@@ -280,6 +302,35 @@ export class SlidingSyncController {
       if (state === SlidingSyncState.Complete) {
         this.lastCompleteAt = Date.now();
       }
+    };
+
+    // watch for encryption state events so we can switch unencrypted subscriptions
+    const handleEvent = async (ev: any) => {
+      if (ev.getType() !== EventType.RoomEncryption) return;
+      const rid = ev.getRoomId();
+      const sync = this.syncInstance;
+      if (!sync) return;
+      const subs = sync.getRoomSubscriptions();
+      if (!subs.has(rid)) return;
+      const crypto = this.matrixClient?.getCrypto();
+      const isEncrypted = crypto ? await crypto.isEncryptionEnabledInRoom(rid) : false;
+      if (!isEncrypted) {
+        try {
+          sync.useCustomSubscription(rid, UNENCRYPTED_SUB_KEY);
+        } catch {}
+      } else {
+        try {
+          // @ts-ignore may be missing in SDK
+          (sync as any).removeCustomSubscription?.(rid);
+        } catch {}
+      }
+    };
+    client.on(ClientEvent.Event, handleEvent);
+    // remember to remove when disposing
+    const origDispose = this.dispose.bind(this);
+    this.dispose = () => {
+      client.off(ClientEvent.Event, handleEvent);
+      origDispose();
     };
 
     sync.on(SlidingSyncEvent.Lifecycle, this.lifecycleHandler as any);
@@ -383,7 +434,18 @@ export class SlidingSyncController {
     if (!sync || !client) return;
 
     const subs = sync.getRoomSubscriptions();
-    if (subs.has(roomId)) return;
+    if (subs.has(roomId)) {
+      // already subscribed, but make sure our timeline limit is generous enough
+      // @ts-ignore missing in some SDK typings
+      const params = (sync as any).getRoomParams(roomId);
+      if (params && params.timeline_limit < 100) {
+        await this.enqueue(() =>
+          // @ts-ignore
+          (sync as any).setRoom(roomId, { ...params, timeline_limit: 100 })
+        );
+      }
+      return;
+    }
 
     subs.add(roomId);
 
@@ -395,6 +457,16 @@ export class SlidingSyncController {
     await this.enqueue(async () => {
       if (!isEncrypted) {
         sync.useCustomSubscription(roomId, UNENCRYPTED_SUB_KEY);
+      }
+      // also bump timeline_limit so users see more history on first open
+      // @ts-ignore
+      const baseParams = (sync as any).getRoomParams(roomId);
+      const newParams = baseParams
+        ? { ...baseParams, timeline_limit: Math.max(baseParams.timeline_limit, 100) }
+        : undefined;
+      if (newParams) {
+        // @ts-ignore
+        await (sync as any).setRoom(roomId, newParams);
       }
       await Promise.resolve(sync.modifyRoomSubscriptions(subs) as any);
     });
@@ -417,6 +489,25 @@ export class SlidingSyncController {
         client.on(ClientEvent.Room, onRoomAdded);
       });
     }
+  }
+
+  /**
+   * Remove a room from the sliding-sync subscription set.  Called when the UI
+   * stops showing the room, to prevent unbounded subscription growth.
+   */
+  public async unfocusRoom(roomId: string): Promise<void> {
+    if (this.slidingSyncDisabled) return;
+    if (!this.slidingSyncEnabled && !this.syncInstance) return;
+
+    await this.initializationPromise;
+    const sync = this.syncInstance;
+    if (!sync) return;
+
+    const subs = sync.getRoomSubscriptions();
+    if (!subs.has(roomId)) return;
+
+    subs.delete(roomId);
+    await this.enqueue(() => Promise.resolve(sync.modifyRoomSubscriptions(subs) as any));
   }
 
   /**
