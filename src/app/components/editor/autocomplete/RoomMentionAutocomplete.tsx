@@ -7,6 +7,7 @@ import { useAtomValue } from 'jotai';
 import { createMentionElement, moveCursor, replaceWithElement } from '../utils';
 import { getDirectRoomAvatarUrl } from '../../../utils/room';
 import { useMatrixClient } from '../../../hooks/useMatrixClient';
+import { useMediaAuthentication } from '../../../hooks/useMediaAuthentication';
 import { AutocompleteQuery } from './autocompleteQuery';
 import { AutocompleteMenu } from './AutocompleteMenu';
 import { getMxIdServer, isRoomAlias } from '../../../utils/matrix';
@@ -77,6 +78,7 @@ export function RoomMentionAutocomplete({
   requestClose,
 }: RoomMentionAutocompleteProps) {
   const mx = useMatrixClient();
+  const useAuthentication = useMediaAuthentication();
   const mDirects = useAtomValue(mDirectAtom);
 
   const allRooms = useAtomValue(allRoomsAtom).sort(factoryRoomIdByActivity(mx));
@@ -163,7 +165,7 @@ export function RoomMentionAutocomplete({
                   {dm ? (
                     <RoomAvatar
                       roomId={room.roomId}
-                      src={getDirectRoomAvatarUrl(mx, room)}
+                      src={getDirectRoomAvatarUrl(mx, room, 32, useAuthentication)}
                       alt={room.name}
                       renderFallback={() => (
                         <RoomIcon

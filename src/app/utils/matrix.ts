@@ -285,8 +285,8 @@ export const mxcUrlToHttp = (
   resizeMethod?: string,
   allowDirectLinks?: boolean,
   allowRedirects?: boolean
-): string | null =>
-  mx.mxcUrlToHttp(
+): string | null => {
+  let url = mx.mxcUrlToHttp(
     mxcUrl,
     width,
     height,
@@ -295,6 +295,15 @@ export const mxcUrlToHttp = (
     allowRedirects,
     useAuthentication
   );
+  if (url && useAuthentication) {
+    // Add a dummy query param so that the URL changes when
+    // authentication state flips.  This forces <img> tags to reload in
+    // cases where the unauthenticated request previously failed with 401.
+    const sep = url.includes('?') ? '&' : '?';
+    url = `${url}${sep}auth=1`;
+  }
+  return url;
+};
 
 export const downloadMedia = async (src: string): Promise<Blob> => {
   // this request is authenticated by service worker

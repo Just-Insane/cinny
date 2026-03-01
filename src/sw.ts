@@ -4,8 +4,8 @@ import { precacheAndRoute, cleanupOutdatedCaches } from 'workbox-precaching';
 export type {};
 declare const self: ServiceWorkerGlobalScope & { __WB_MANIFEST?: unknown[] };
 
-const DEFAULT_NOTIFICATION_ICON = '/res/apple/apple-touch-icon-180x180.png';
-const DEFAULT_NOTIFICATION_BADGE = '/res/apple/apple-touch-icon-72x72.png';
+const DEFAULT_NOTIFICATION_ICON = '/public/res/apple/apple-touch-icon-180x180.png';
+const DEFAULT_NOTIFICATION_BADGE = '/public/res/apple/apple-touch-icon-72x72.png';
 const PUSH_EVENT_LOOKUP_TIMEOUT_MS = 2500;
 const INBOX_NOTIFICATIONS_PATH = 'inbox/notifications/';
 const HOME_PATH = 'home/';

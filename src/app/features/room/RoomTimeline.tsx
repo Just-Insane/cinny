@@ -11,6 +11,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import { logger } from 'matrix-js-sdk/lib/logger';
 import {
   Direction,
   EventTimeline,
@@ -467,11 +468,13 @@ const useLiveEventArrive = (room: Room, onArrive: (mEvent: MatrixEvent) => void)
     ) => {
       if (eventRoom?.roomId !== room.roomId) return;
       if (removed) return;
-      // Sliding Sync and some JS-SDK versions do not always set `data.liveEvent`.
-      // Treat events as live unless the SDK explicitly marks them as non-live.
-      const isExplicitlyNotLive =
-        !!data && 'liveEvent' in (data as any) && (data as any).liveEvent === false;
-      if (isExplicitlyNotLive) return;
+      // Historically we would skip events explicitly marked as non-live.  This
+      // unfortunately means the initial batch of timeline events delivered by
+      // sliding‑sync (which are flagged non-live) never triggers our arrival
+      // logic, leading to blank/sluggish timelines when opening a room.  The
+      // only thing we really need to ignore is events added at the *start* of
+      // the timeline (pagination).  Let everything else through so that the
+      // view can eagerly refresh once the SDK populates the room.
       if (toStartOfTimeline) return;
       onArrive(mEvent);
     };
@@ -497,7 +500,6 @@ const useLiveTimelineRefresh = (room: Room, onRefresh: () => void) => {
     };
 
     // Some SDK versions also emit TimelineReset; treat it like a refresh.
-    // @ts-expect-error - TimelineReset may not exist in all sdk versions
     const handleTimelineReset: RoomEventHandlerMap[RoomEvent.TimelineRefresh] = (r) => {
       if ((r as any).roomId !== room.roomId) return;
       onRefresh();
@@ -720,6 +722,14 @@ export function RoomTimeline({
   useEffect(() => {
     isDeepLinkModeRef.current = !!eventId;
   }, [eventId]);
+
+  // Reset timeline state when switching rooms or entering/exiting deep-link mode
+  useEffect(() => {
+    setTimeline(eventId ? getEmptyTimeline() : getInitialTimeline(room));
+    // Reset the scrollToBottom counter so we auto-scroll to latest messages on room open
+    scrollToBottomRef.current.count += 1;
+    scrollToBottomRef.current.smooth = false;
+  }, [room.roomId, eventId]);
 
   const exitDeepLinkToLive = useCallback(() => {
     // replace URL to remove eventId without adding a new history entry
@@ -962,6 +972,16 @@ export function RoomTimeline({
         }
 
         // Not at bottom: still refresh linked timelines, but validate range against new length
+        // However, skip updates during deep-link mode to avoid collapsing the range.
+        if (isDeepLinkModeRef.current) {
+          // Just refresh the linked timelines without changing the range
+          setTimeline((ct) => ({
+            linkedTimelines: refreshFromRoom(),
+            range: ct.range,
+          }));
+          return;
+        }
+
         setTimeline((ct) => {
           const newLinkedTimelines = refreshFromRoom();
           const newEvLength = getTimelinesEventsCount(newLinkedTimelines);
@@ -2012,7 +2032,7 @@ export function RoomTimeline({
     if (!eventTimeline) return null;
     const timelineSet = eventTimeline?.getTimelineSet();
     const mEvent = getTimelineEvent(eventTimeline, getTimelineRelativeIndex(item, baseIndex));
-    const mEventId = mEvent?.getId();
+    const mEventId = mEvent?.getId() ?? '';
     if (!mEvent) return null;
 
     // keep stable rendering even if event_id isn't present yet

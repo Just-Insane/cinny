@@ -1,5 +1,6 @@
-import React, { MouseEventHandler, forwardRef, useMemo, useRef, useState } from 'react';
+import React, { MouseEventHandler, forwardRef, useMemo, useRef, useState, useEffect } from 'react';
 import { useAtom, useAtomValue } from 'jotai';
+import { RoomEvent } from 'matrix-js-sdk';
 import {
   Avatar,
   Box,
@@ -180,13 +181,32 @@ export function Direct() {
   const noRoomToDisplay = directs.length === 0;
   const [closedCategories, setClosedCategories] = useAtom(useClosedNavCategoriesAtom());
 
+  // bump counter whenever any direct room receives a new timeline event so
+  // our `useMemo` sort order is recalculated.  Without this the list only
+  // re-sorted when other dependencies changed (nav state, unread, etc.) which
+  // meant sending a message didn't move the room to the top until the user
+  // navigated away and back.
+  const [activityVersion, setActivityVersion] = useState(0);
+  const directsSet = useMemo(() => new Set(directs), [directs]);
+  useEffect(() => {
+    const handleTimeline = (event: any, room: any) => {
+      if (room && directsSet.has(room.roomId)) {
+        setActivityVersion((v) => v + 1);
+      }
+    };
+    mx.on(RoomEvent.Timeline, handleTimeline);
+    return () => {
+      mx.removeListener(RoomEvent.Timeline, handleTimeline);
+    };
+  }, [mx, directsSet]);
+
   const sortedDirects = useMemo(() => {
     const items = Array.from(directs).sort(factoryRoomIdByActivity(mx));
     if (closedCategories.has(DEFAULT_CATEGORY_ID)) {
       return items.filter((rId) => roomToUnread.has(rId) || rId === selectedRoomId);
     }
     return items;
-  }, [mx, directs, closedCategories, roomToUnread, selectedRoomId]);
+  }, [mx, directs, closedCategories, roomToUnread, selectedRoomId, activityVersion]);
 
   const virtualizer = useVirtualizer({
     count: sortedDirects.length,

@@ -295,13 +295,10 @@ function MessageNotifications() {
 function PushNotificationBridge() {
   const mx = useMatrixClient();
   const appBaseUrl = usePathWithOrigin('');
-  const [showPushNotificationContent] = useSetting(
-    settingsAtom,
-    'showPushNotificationContent'
-  );
+  const [showPushNotificationContent] = useSetting(settingsAtom, 'showPushNotificationContent');
 
   useEffect(() => {
-    pushSessionToSW(mx.baseUrl, mx.getAccessToken(), mx.getUserId() ?? undefined, {
+    pushSessionToSW(mx.baseUrl, mx.getAccessToken() ?? undefined, mx.getUserId() ?? undefined, {
       showPushNotificationContent,
       appBaseUrl,
     });
