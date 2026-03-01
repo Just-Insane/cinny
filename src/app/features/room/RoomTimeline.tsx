@@ -615,6 +615,13 @@ export function RoomTimeline({
   const imagePackRooms: Room[] = useImagePackRooms(room.roomId, roomToParents);
 
   const [unreadInfo, setUnreadInfo] = useState(() => getRoomUnreadInfo(room, true));
+
+  // clear/initialize unread info whenever we navigate to a different room.
+  // React may reuse the same RoomTimeline component instance, so the state
+  // needs to be reset explicitly instead of relying on the initialiser only.
+  useEffect(() => {
+    setUnreadInfo(getRoomUnreadInfo(room, true));
+  }, [room.roomId]);
   const readUptoEventIdRef = useRef<string>();
   if (unreadInfo) {
     readUptoEventIdRef.current = unreadInfo.readUptoEventId;
@@ -1175,14 +1182,28 @@ export function RoomTimeline({
   ]);
 
   useLayoutEffect(() => {
+    // if we're jumping to a specific event (deep link) bail early
     if (isDeepLinkModeRef.current) return;
+
+    // when the component is mounted we normally try to restore the previous
+    // scroll position for the room.  however, if there are unread messages we
+    // would rather show the user the new content instead of putting them back
+    // where they last left off.  `unreadInfo.scrollTo` is only true on the
+    // initial mount (getRoomUnreadInfo called with `true`), so use it as a
+    // signal that the caller wants us to perform the unread jump instead of
+    // restoring.
+    if (unreadInfo?.scrollTo) {
+      // we still keep the scroll state around in case the user leaves again
+      // without consuming the unread messages, but don't perform the restore now
+      return;
+    }
 
     const restored = restoreRoomScrollState();
     if (restored) return;
 
     const scrollEl = scrollRef.current;
     if (scrollEl) scrollToBottom(scrollEl);
-  }, [room.roomId, restoreRoomScrollState]);
+  }, [room.roomId, restoreRoomScrollState, unreadInfo]);
 
   // if live timeline is linked and unreadInfo change
   // Scroll to last read message
@@ -1194,11 +1215,36 @@ export function RoomTimeline({
       const absoluteIndex =
         evtTimeline && getEventIdAbsoluteIndex(linkedTimelines, evtTimeline, readUptoEventId);
       if (typeof absoluteIndex === 'number') {
-        scrollToItem(absoluteIndex, {
-          behavior: 'instant',
-          align: 'start',
-          stopInView: true,
-        });
+        // The previous implementation scrolled to the last read event.
+        // That meant a room with exactly one new message would position the
+        // read marker at the top of the viewport and the new message would be
+        // off‑screen at the bottom, leading to complaints that "new chat
+        // messages aren’t visible when opening a room".  Instead we want to
+        // show the first unread event itself (or fall back to bottom if we
+        // can’t compute it).
+        const total = getTimelinesEventsCount(linkedTimelines);
+        const targetIndex = Math.min(absoluteIndex + 1, total - 1);
+        if (targetIndex < total) {
+          scrollToItem(targetIndex, {
+            behavior: 'instant',
+            align: 'start',
+            stopInView: true,
+          });
+        } else {
+          // read marker was the last event in the range – just jump to bottom
+          const scrollEl = scrollRef.current;
+          if (scrollEl) scrollToBottom(scrollEl);
+        }
+
+        // we just jumped based on unread information; forget any saved scroll
+        // state so we don’t accidentally restore it again for this room.
+        roomScrollStateRef.current.delete(room.roomId);
+      } else {
+        // if the marker is not in the currently-loaded slice, there’s nothing
+        // useful to scroll to; fall back to bottom so the user still sees new
+        // material.
+        const scrollEl = scrollRef.current;
+        if (scrollEl) scrollToBottom(scrollEl);
       }
     }
   }, [room, unreadInfo, scrollToItem]);
