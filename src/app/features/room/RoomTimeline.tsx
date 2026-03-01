@@ -965,14 +965,22 @@ export function RoomTimeline({
         setTimeline((ct) => {
           const newLinkedTimelines = refreshFromRoom();
           const newEvLength = getTimelinesEventsCount(newLinkedTimelines);
-          // Ensure range is within valid bounds when linked timelines change
-          const validatedRange = {
-            start: Math.min(ct.range.start, newEvLength),
-            end: Math.min(ct.range.end, newEvLength),
-          };
+
+          // Clamp existing range into bounds. If the clamped start is >= end
+          // we likely lost events (e.g. timeline shrink) — switch to showing
+          // the last page so the view isn't an empty window.
+          const clampedStart = Math.min(ct.range.start, newEvLength);
+          const clampedEnd = Math.min(ct.range.end, newEvLength);
+
+          if (clampedStart >= clampedEnd) {
+            const end = newEvLength;
+            const start = Math.max(0, end - PAGINATION_LIMIT);
+            return { linkedTimelines: newLinkedTimelines, range: { start, end } };
+          }
+
           return {
             linkedTimelines: newLinkedTimelines,
-            range: validatedRange,
+            range: { start: clampedStart, end: clampedEnd },
           };
         });
 
