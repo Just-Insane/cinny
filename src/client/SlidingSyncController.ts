@@ -260,7 +260,12 @@ export class SlidingSyncController {
       this.syncInstance.off(SlidingSyncEvent.Lifecycle, this.lifecycleHandler as any);
     }
 
-    const configuredLists = new Map(Object.entries(INITIAL_LIST_CONFIGS));
+    // build a typed Map without relying on ES2017 features such as entries
+    // to keep compatibility with older TS lib targets.
+    const configuredLists = new Map<string, MSC3575List>();
+    for (const key of Object.keys(INITIAL_LIST_CONFIGS)) {
+      configuredLists.set(key, INITIAL_LIST_CONFIGS[key]);
+    }
 
     let sync: SlidingSync;
 
@@ -434,6 +439,12 @@ export class SlidingSyncController {
     if (!sync || !client) return;
 
     const subs = sync.getRoomSubscriptions();
+    // if we were about to unsubscribe the room, cancel that
+    const pending = this.pendingUnfocus.get(roomId);
+    if (pending) {
+      window.clearTimeout(pending);
+      this.pendingUnfocus.delete(roomId);
+    }
     if (subs.has(roomId)) {
       // already subscribed, but make sure our timeline limit is generous enough
       // @ts-ignore missing in some SDK typings
@@ -495,19 +506,36 @@ export class SlidingSyncController {
    * Remove a room from the sliding-sync subscription set.  Called when the UI
    * stops showing the room, to prevent unbounded subscription growth.
    */
+  // unsubscriptions are delayed to avoid thrashing when the user rapidly
+  // switches between rooms.  we store a timeout handle for each room and only
+  // actually modify the subscriptions once the timer fires.  if the room is
+  // re‑focused before that happens we cancel the pending removal.
+  private pendingUnfocus = new Map<string, number>();
+
   public async unfocusRoom(roomId: string): Promise<void> {
     if (this.slidingSyncDisabled) return;
     if (!this.slidingSyncEnabled && !this.syncInstance) return;
 
-    await this.initializationPromise;
-    const sync = this.syncInstance;
-    if (!sync) return;
+    // cancel any previous pending removal (defensive)
+    const prev = this.pendingUnfocus.get(roomId);
+    if (prev) {
+      window.clearTimeout(prev);
+      this.pendingUnfocus.delete(roomId);
+    }
 
-    const subs = sync.getRoomSubscriptions();
-    if (!subs.has(roomId)) return;
+    const timer = window.setTimeout(async () => {
+      this.pendingUnfocus.delete(roomId);
+      const sync = this.syncInstance;
+      if (!sync) return;
 
-    subs.delete(roomId);
-    await this.enqueue(() => Promise.resolve(sync.modifyRoomSubscriptions(subs) as any));
+      const subs = sync.getRoomSubscriptions();
+      if (!subs.has(roomId)) return;
+
+      subs.delete(roomId);
+      await this.enqueue(() => Promise.resolve(sync.modifyRoomSubscriptions(subs) as any));
+    }, 30_000); // keep subscription for 30s
+
+    this.pendingUnfocus.set(roomId, timer);
   }
 
   /**
@@ -566,8 +594,10 @@ export class SlidingSyncController {
    * For iOS PWA / flaky networks: when coming back to foreground, force a resend and if
    * we don’t observe progress, do a controlled restart.
    */
-  public async resumeFromAppForeground(): Promise<void> {
-    if (this.slidingSyncDisabled) return;
+  // returns a promise that resolves when the resume sequence finishes; callers
+  // may ignore the return value but it can be waited on for testing or logging.
+  public resumeFromAppForeground(): Promise<void> | null {
+    if (this.slidingSyncDisabled) return null;
     if (this.inResume) return this.inResume;
 
     this.inResume = (async () => {
@@ -606,9 +636,17 @@ export class SlidingSyncController {
       this.lastRestartAt = now;
       this.lastCompleteAt = now;
       this.lastRequestFinishedAt = now;
-    })().finally(() => {
-      this.inResume = null;
-    });
+    })();
+
+    // clear the reference when the promise settles without using finally
+    this.inResume.then(
+      () => {
+        this.inResume = null;
+      },
+      () => {
+        this.inResume = null;
+      }
+    );
 
     return this.inResume;
   }
