@@ -631,6 +631,46 @@ export function RoomTimeline({
     smooth: true,
   });
 
+  const roomScrollStateRef = useRef(
+    new Map<
+      string,
+      {
+        top: number; // scrollTop
+        // optional: store scrollHeight so we can do delta restore if needed later
+        height: number;
+        atBottom: boolean;
+        // store a marker event id if you want future "anchor-based" restore
+        // anchorEventId?: string;
+      }
+    >()
+  );
+
+  const saveRoomScrollState = useCallback(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    if (el.scrollHeight <= el.clientHeight) return;
+
+    roomScrollStateRef.current.set(room.roomId, {
+      top: el.scrollTop,
+      height: el.scrollHeight,
+      atBottom: atBottomRef.current,
+    });
+  }, [room.roomId]);
+
+  const restoreRoomScrollState = useCallback(() => {
+    const el = scrollRef.current;
+    const st = roomScrollStateRef.current.get(room.roomId);
+    if (!el || !st) return false;
+
+    // restore scrollTop
+    el.scrollTop = st.top;
+
+    // restore atBottom flag so UI (Jump to Latest) matches
+    setAtBottom(st.atBottom);
+    return true;
+  }, [room.roomId]);
+
   const [focusItem, setFocusItem] = useState<
     | {
         index: number;
@@ -737,18 +777,33 @@ export function RoomTimeline({
 
   const getScrollElement = useCallback(() => scrollRef.current, []);
 
-  // iOS PWA: when restoring from background / push-open / BFCache,
-  // force a re-stitch of linked timelines + range to avoid blank timelines.
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    const onScroll = () => {
+      const atBottomNow = atBottomRef.current;
+      roomScrollStateRef.current.set(room.roomId, {
+        top: el.scrollTop,
+        height: el.scrollHeight,
+        atBottom: atBottomNow,
+      });
+    };
+
+    el.addEventListener('scroll', onScroll, { passive: true });
+    return () => el.removeEventListener('scroll', onScroll);
+  }, [room.roomId]);
+
   useEffect(() => {
     const onResume = () => {
       if (document.visibilityState && document.visibilityState !== 'visible') return;
 
-      // If we are viewing a specific event timeline, do NOT restitch to live timeline.
       if (isDeepLinkModeRef.current) return;
 
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           bumpTimelineVersion();
+
           setTimeline((ct) => {
             const linkedTimelines = getLinkedTimelines(getLiveTimeline(room));
             const evLength = getTimelinesEventsCount(linkedTimelines);
@@ -773,6 +828,10 @@ export function RoomTimeline({
             scrollToBottomRef.current.count += 1;
             scrollToBottomRef.current.smooth = false;
           }
+
+          requestAnimationFrame(() => {
+            saveRoomScrollState?.();
+          });
         });
       });
     };
@@ -786,7 +845,7 @@ export function RoomTimeline({
       window.removeEventListener('focus', onResume);
       document.removeEventListener('visibilitychange', onResume);
     };
-  }, [room, bumpTimelineVersion]);
+  }, [room, bumpTimelineVersion, saveRoomScrollState]);
 
   const { getItems, scrollToItem, scrollToElement, observeBackAnchor, observeFrontAnchor } =
     useVirtualPaginator({
@@ -807,6 +866,12 @@ export function RoomTimeline({
       }, []),
       onEnd: handleTimelinePagination,
     });
+
+  useEffect(() => {
+    return () => {
+      saveRoomScrollState();
+    };
+  }, [saveRoomScrollState]);
 
   const loadEventTimeline = useEventTimelineLoader(
     mx,
@@ -1109,13 +1174,15 @@ export function RoomTimeline({
     exitDeepLinkToLive,
   ]);
 
-  // Scroll to bottom on initial timeline load
   useLayoutEffect(() => {
+    if (isDeepLinkModeRef.current) return;
+
+    const restored = restoreRoomScrollState();
+    if (restored) return;
+
     const scrollEl = scrollRef.current;
-    if (scrollEl) {
-      scrollToBottom(scrollEl);
-    }
-  }, []);
+    if (scrollEl) scrollToBottom(scrollEl);
+  }, [room.roomId, restoreRoomScrollState]);
 
   // if live timeline is linked and unreadInfo change
   // Scroll to last read message
