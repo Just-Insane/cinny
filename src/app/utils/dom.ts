@@ -229,9 +229,20 @@ export const syntaxErrorPosition = (error: SyntaxError): number | undefined => {
   return position;
 };
 
+import { isDesktop } from './user-agent';
+
 export const notificationPermission = (permission: NotificationPermission) => {
   if ('Notification' in window) {
-    return window.Notification.permission === permission;
+    const perm = window.Notification.permission;
+    // In a desktop build the permission API is a no‑op; the runtime always
+    // lets us show notifications even though the value comes back as
+    // "default". Treat anything other than explicit deny as granted so that
+    // we don't accidentally hide notifications for Tauri users after the web
+    // push refactor introduced an explicit check.
+    if (isDesktop()) {
+      return perm !== 'denied';
+    }
+    return perm === permission;
   }
   return false;
 };

@@ -22,7 +22,10 @@ import { getSettings } from './app/state/settings';
 document.body.classList.add(configClass, varsClass);
 
 // Register Service Worker
-if ('serviceWorker' in navigator) {
+// The SW is only relevant for web push. Desktop builds don’t use it and some
+// platforms (e.g. file:// schemes used by Tauri) may reject registration with
+// noisy errors, so bail out early.
+if ('serviceWorker' in navigator && !/Tauri/.test(navigator.userAgent)) {
   const baseUrl = trimTrailingSlash(import.meta.env.BASE_URL || '/');
   const swUrl = import.meta.env.MODE === 'production' ? `${baseUrl}/sw.js` : `${baseUrl}/dev-sw.js?dev-sw`;
   const swType: RegistrationOptions['type'] =

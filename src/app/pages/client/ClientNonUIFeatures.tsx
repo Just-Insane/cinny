@@ -365,6 +365,24 @@ type ClientNonUIFeaturesProps = {
 };
 
 export function ClientNonUIFeatures({ children }: ClientNonUIFeaturesProps) {
+  const [showNotifications] = useSetting(settingsAtom, 'useInAppNotifications');
+
+  // When the user asks for in‑app notifications make sure we request the
+  // browser permission. On normal browsers this pops up a prompt; on desktop
+  // builds the promise resolves to "granted" immediately, which prevents the
+  // permission check below from blocking our notifications. This mirrors the
+  // behaviour prior to the push/permission refactor.
+  React.useEffect(() => {
+    if (
+      showNotifications &&
+      'Notification' in window &&
+      window.Notification.permission === 'default'
+    ) {
+      // we don't await this on purpose; failures here are non‑fatal.
+      Notification.requestPermission().catch(() => {});
+    }
+  }, [showNotifications]);
+
   return (
     <>
       <SystemEmojiFeature />
