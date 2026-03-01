@@ -961,11 +961,20 @@ export function RoomTimeline({
           return;
         }
 
-        // Not at bottom: still refresh linked timelines, but keep range.
-        setTimeline((ct) => ({
-          linkedTimelines: refreshFromRoom(),
-          range: { ...ct.range },
-        }));
+        // Not at bottom: still refresh linked timelines, but validate range against new length
+        setTimeline((ct) => {
+          const newLinkedTimelines = refreshFromRoom();
+          const newEvLength = getTimelinesEventsCount(newLinkedTimelines);
+          // Ensure range is within valid bounds when linked timelines change
+          const validatedRange = {
+            start: Math.min(ct.range.start, newEvLength),
+            end: Math.min(ct.range.end, newEvLength),
+          };
+          return {
+            linkedTimelines: newLinkedTimelines,
+            range: validatedRange,
+          };
+        });
 
         if (!unreadInfo) {
           setUnreadInfo(getRoomUnreadInfo(room));
